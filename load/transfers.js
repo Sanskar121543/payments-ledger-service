@@ -22,8 +22,20 @@ export const options = {
   discardResponseBodies: true,
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
+    // Not measured: lets the JVMs JIT-compile and the connection pools fill after a fresh start.
+    warmup: {
+      executor: 'constant-arrival-rate',
+      exec: 'transfer',
+      rate: Math.max(1, Math.floor(RATE / 2)),
+      timeUnit: '1s',
+      duration: '20s',
+      preAllocatedVUs: 25,
+      maxVUs: 150,
+    },
     transfers: {
       executor: 'constant-arrival-rate',
+      exec: 'transfer',
+      startTime: '25s',
       rate: RATE,
       timeUnit: '1s',
       duration: DURATION,
@@ -40,6 +52,9 @@ export const options = {
     // excluding the setup and teardown calls.
     'http_req_duration{scenario:transfers}': ['max>=0'],
     'http_reqs{scenario:transfers}': ['count>=0'],
+    'transfers_completed{scenario:transfers}': ['count>=0'],
+    'transfers_refused_insufficient_funds{scenario:transfers}': ['count>=0'],
+    'dropped_iterations{scenario:transfers}': ['count>=0'],
   },
 };
 
@@ -68,7 +83,7 @@ export function setup() {
   return { run, accounts };
 }
 
-export default function (data) {
+export function transfer(data) {
   const from = Math.floor(Math.random() * ACCOUNTS);
   const to = (from + 1 + Math.floor(Math.random() * (ACCOUNTS - 1))) % ACCOUNTS;
   const body = JSON.stringify({
@@ -116,10 +131,10 @@ export function handleSummary(data) {
     scenario: { executor: 'constant-arrival-rate', ratePerSecond: RATE, duration: DURATION, accounts: ACCOUNTS },
     results: {
       transferRequests: metric(data, 'http_reqs{scenario:transfers}', 'count'),
-      transfersCompleted: metric(data, 'transfers_completed', 'count'),
-      transfersRefusedInsufficientFunds: metric(data, 'transfers_refused_insufficient_funds', 'count'),
-      unexpectedStatuses: metric(data, 'transfers_unexpected_status', 'count'),
-      droppedIterations: metric(data, 'dropped_iterations', 'count'),
+      transfersCompleted: metric(data, 'transfers_completed{scenario:transfers}', 'count'),
+      transfersRefusedInsufficientFunds: metric(data, 'transfers_refused_insufficient_funds{scenario:transfers}', 'count'),
+      unexpectedStatusesIncludingWarmup: metric(data, 'transfers_unexpected_status', 'count'),
+      droppedIterations: metric(data, 'dropped_iterations{scenario:transfers}', 'count'),
       latencyMs: {
         avg: metric(data, 'http_req_duration{scenario:transfers}', 'avg'),
         p50: metric(data, 'http_req_duration{scenario:transfers}', 'med'),
@@ -136,10 +151,10 @@ export function handleSummary(data) {
   const markdown = [
     `| Metric | Value |`,
     `|---|---|`,
-    `| Scenario | ${RATE} transfers/s offered for ${DURATION}, constant arrival rate, through nginx to 3 instances |`,
+    `| Scenario | ${RATE} transfers/s offered for ${DURATION} (after a 20 s warm-up that is not counted), constant arrival rate, through nginx to 3 instances |`,
     `| Transfer requests sent | ${r.transferRequests} |`,
     `| Completed (201) / refused for insufficient funds (422) | ${r.transfersCompleted} / ${r.transfersRefusedInsufficientFunds} |`,
-    `| Unexpected status codes | ${r.unexpectedStatuses} |`,
+    `| Unexpected status codes (warm-up included) | ${r.unexpectedStatusesIncludingWarmup} |`,
     `| Dropped iterations (k6 could not keep up) | ${r.droppedIterations} |`,
     `| Latency p50 / p90 / p95 / p99 | ${ms(r.latencyMs.p50)} / ${ms(r.latencyMs.p90)} / ${ms(r.latencyMs.p95)} / ${ms(r.latencyMs.p99)} |`,
     `| Latency max | ${ms(r.latencyMs.max)} |`,

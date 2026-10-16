@@ -22,7 +22,7 @@ mkdir -p results/k6
 docker compose --profile full up -d --build --wait
 
 stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-( sleep 30; docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' \
+( sleep 55; docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' \
     | grep -E 'NAME|payments-ledger' > "results/k6/${stamp}-docker-stats.txt" ) &
 stats_pid=$!
 
