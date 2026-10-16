@@ -43,6 +43,9 @@ public class Transfer {
     @Column(name = "reverses_transfer_id", updatable = false)
     private Long reversesTransferId;
 
+    @Column(name = "served_by", nullable = false, updatable = false)
+    private String servedBy;
+
     @Column(name = "correlation_id", updatable = false)
     private String correlationId;
 
@@ -53,25 +56,28 @@ public class Transfer {
     }
 
     private Transfer(TransferKind kind, long fromAccountId, long toAccountId, long amountCents,
-            Long reversesTransferId, String correlationId) {
+            Long reversesTransferId, String servedBy, String correlationId) {
         this.kind = kind;
         this.status = TransferStatus.PENDING;
         this.fromAccountId = fromAccountId;
         this.toAccountId = toAccountId;
         this.amountCents = amountCents;
         this.reversesTransferId = reversesTransferId;
+        this.servedBy = servedBy;
         this.correlationId = correlationId;
         this.createdAt = Instant.now();
     }
 
-    public static Transfer pending(long fromAccountId, long toAccountId, long amountCents, String correlationId) {
-        return new Transfer(TransferKind.TRANSFER, fromAccountId, toAccountId, amountCents, null, correlationId);
+    public static Transfer pending(long fromAccountId, long toAccountId, long amountCents, String servedBy,
+            String correlationId) {
+        return new Transfer(TransferKind.TRANSFER, fromAccountId, toAccountId, amountCents, null, servedBy,
+                correlationId);
     }
 
     /** A reversal sends the original amount back, from the original recipient to the original sender. */
-    public static Transfer pendingReversal(Transfer original, String correlationId) {
+    public static Transfer pendingReversal(Transfer original, String servedBy, String correlationId) {
         return new Transfer(TransferKind.REVERSAL, original.toAccountId, original.fromAccountId,
-                original.amountCents, original.id, correlationId);
+                original.amountCents, original.id, servedBy, correlationId);
     }
 
     public boolean isReversible() {
@@ -125,6 +131,10 @@ public class Transfer {
 
     public Long getReversesTransferId() {
         return reversesTransferId;
+    }
+
+    public String getServedBy() {
+        return servedBy;
     }
 
     public String getCorrelationId() {

@@ -2,6 +2,7 @@ package io.github.sanskar121543.payments.transfer;
 
 import io.github.sanskar121543.payments.account.Account;
 import io.github.sanskar121543.payments.account.AccountRepository;
+import io.github.sanskar121543.payments.common.InstanceInfo;
 import io.github.sanskar121543.payments.idempotency.IdempotencyService;
 import io.github.sanskar121543.payments.idempotency.RequestFingerprint;
 import io.github.sanskar121543.payments.idempotency.StoredResponse;
@@ -24,14 +25,16 @@ public class TransferService {
     private final LedgerEntryRepository entries;
     private final IdempotencyService idempotency;
     private final TransferResponses responses;
+    private final InstanceInfo instance;
 
     TransferService(AccountRepository accounts, TransferRepository transfers, LedgerEntryRepository entries,
-            IdempotencyService idempotency, TransferResponses responses) {
+            IdempotencyService idempotency, TransferResponses responses, InstanceInfo instance) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.entries = entries;
         this.idempotency = idempotency;
         this.responses = responses;
+        this.instance = instance;
     }
 
     @Transactional
@@ -53,7 +56,7 @@ public class TransferService {
             return responses.accountNotFound(locked.missingAccountId());
         }
         Transfer transfer = transfers.save(Transfer.pending(request.fromAccount(), request.toAccount(),
-                request.amountCents(), MDC.get(CorrelationIdFilter.MDC_KEY)));
+                request.amountCents(), instance.id(), MDC.get(CorrelationIdFilter.MDC_KEY)));
         return settle(transfer, locked.from(), locked.to());
     }
 
@@ -72,7 +75,8 @@ public class TransferService {
         if (transfers.existsByReversesTransferIdAndStatus(originalId, TransferStatus.COMPLETED)) {
             return responses.alreadyReversed(original);
         }
-        Transfer reversal = transfers.save(Transfer.pendingReversal(original, MDC.get(CorrelationIdFilter.MDC_KEY)));
+        Transfer reversal = transfers.save(
+                Transfer.pendingReversal(original, instance.id(), MDC.get(CorrelationIdFilter.MDC_KEY)));
         return settle(reversal, locked.from(), locked.to());
     }
 

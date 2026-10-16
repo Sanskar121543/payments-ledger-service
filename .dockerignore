@@ -1,0 +1,11 @@
+target/
+.git/
+.idea/
+.vscode/
+.env
+results/
+load/
+grafana/
+prometheus/
+nginx/
+*.md

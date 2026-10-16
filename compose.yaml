@@ -1,0 +1,94 @@
+name: payments-ledger
+
+# Profiles:
+#   (none)        postgres only: run the app from your IDE with ./mvnw spring-boot:run
+#   --profile lite   + app1 behind nginx (daily work)
+#   --profile full   + app2, app3 (tests and demos)
+
+x-app-env: &app-env
+  DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+  DB_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  API_KEY_HASHES: ${API_KEY_HASHES:?set API_KEY_HASHES in .env}
+  # Heap is fixed at 320 MB inside a 768 MB container; the rest is metaspace, code cache and threads.
+  JAVA_OPTS: >-
+    -Xms320m -Xmx320m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m
+    -XX:ReservedCodeCacheSize=96m -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+
+x-app: &app
+  build: .
+  image: payments-ledger-service:local
+  mem_limit: 768m
+  memswap_limit: 768m
+  depends_on:
+    postgres:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+    start_period: 20s
+
+services:
+  postgres:
+    image: postgres:18.6
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    # client_connection_check_interval lets Postgres notice a killed app within ~1s and roll back
+    # its open transaction, releasing that instance's row locks.
+    command: >-
+      postgres -c shared_buffers=192MB -c effective_cache_size=512MB -c max_connections=60
+      -c client_connection_check_interval=1s
+      -c tcp_keepalives_idle=30 -c tcp_keepalives_interval=10 -c tcp_keepalives_count=3
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    mem_limit: 768m
+    memswap_limit: 768m
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app1:
+    <<: *app
+    profiles: [lite, full]
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app1
+
+  app2:
+    <<: *app
+    profiles: [full]
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app2
+
+  app3:
+    <<: *app
+    profiles: [full]
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app3
+
+  nginx:
+    image: nginx:1.30.6-alpine
+    profiles: [lite, full]
+    ports:
+      - "${HTTP_PORT:-8088}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    mem_limit: 64m
+    memswap_limit: 64m
+    depends_on:
+      app1:
+        condition: service_healthy
+
+volumes:
+  pgdata:

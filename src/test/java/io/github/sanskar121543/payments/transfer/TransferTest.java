@@ -9,7 +9,7 @@ class TransferTest {
 
     @Test
     void startsPendingAndCompletesOnce() {
-        Transfer transfer = Transfer.pending(1, 2, 100, "corr");
+        Transfer transfer = Transfer.pending(1, 2, 100, "app1", "corr");
         assertThat(transfer.getStatus()).isEqualTo(TransferStatus.PENDING);
 
         transfer.complete();
@@ -21,7 +21,7 @@ class TransferTest {
 
     @Test
     void failingRecordsTheReason() {
-        Transfer transfer = Transfer.pending(1, 2, 100, "corr");
+        Transfer transfer = Transfer.pending(1, 2, 100, "app1", "corr");
 
         transfer.fail(Transfer.INSUFFICIENT_FUNDS);
 

@@ -15,6 +15,7 @@ public record TransferResponse(
         String failureReason,
         Long reversesTransfer,
         Long reversedBy,
+        String servedBy,
         String correlationId,
         Instant createdAt,
         List<EntryResponse> entries) {
@@ -23,7 +24,7 @@ public record TransferResponse(
         return new TransferResponse(transfer.getId(), transfer.getKind(), transfer.getStatus(),
                 transfer.getFromAccountId(), transfer.getToAccountId(), transfer.getAmountCents(),
                 transfer.getFailureReason(), transfer.getReversesTransferId(), reversedBy,
-                transfer.getCorrelationId(), transfer.getCreatedAt(),
+                transfer.getServedBy(), transfer.getCorrelationId(), transfer.getCreatedAt(),
                 entries.stream().map(EntryResponse::from).toList());
     }
 }
