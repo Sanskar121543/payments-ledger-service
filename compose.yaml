@@ -14,9 +14,12 @@ x-app-env: &app-env
   # The dashboard's demo buttons send their requests through nginx, so they spread over every instance.
   PAYMENTS_DEMO_BASE_URL: http://nginx
   # Heap is fixed at 320 MB inside a 768 MB container; the rest is metaspace, code cache and threads.
+  # G1 with a 128 MB code cache: with SerialGC and a 96 MB code cache, full GCs triggered by the
+  # code-cache/metaspace thresholds paused instances for up to 300 ms (see results/k6, first run).
   JAVA_OPTS: >-
-    -Xms320m -Xmx320m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m
-    -XX:ReservedCodeCacheSize=96m -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+    -Xms320m -Xmx320m -XX:+UseG1GC -XX:MaxGCPauseMillis=50
+    -XX:MetaspaceSize=96m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=128m
+    -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
 
 x-app: &app
   build: .
