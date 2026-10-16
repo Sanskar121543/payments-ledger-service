@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class ApiKeyFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-API-Key";
-    public static final String CLIENT_ID_ATTRIBUTE = ApiKeyFilter.class.getName() + ".clientId";
+    public static final String CLIENT_ID_ATTRIBUTE = "payments.clientId";
 
     private final ApiKeys apiKeys;
     private final JsonMapper jsonMapper;

@@ -1,11 +1,13 @@
 package io.github.sanskar121543.payments.web;
 
+import io.github.sanskar121543.payments.idempotency.IdempotencyKeyInUseException;
 import java.net.URI;
 import java.util.List;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -30,6 +32,25 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<ProblemDetail> notFound(NotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Problems.of(HttpStatus.NOT_FOUND, e.type(), "Not found", e.getMessage()));
+    }
+
+    @ExceptionHandler(IdempotencyKeyInUseException.class)
+    ResponseEntity<ProblemDetail> keyInUse(IdempotencyKeyInUseException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(Problems.of(HttpStatus.CONFLICT, "idempotency-key-in-use", "Request still in progress",
+                        e.getMessage()));
+    }
+
+    // Raised when lock_timeout expires (or, in theory, a deadlock). Nothing was committed, so a retry
+    // with the same Idempotency-Key is safe.
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    ResponseEntity<ProblemDetail> lockTimeout(PessimisticLockingFailureException e) {
+        log.warn("Lock wait gave up: {}", e.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(Problems.of(HttpStatus.SERVICE_UNAVAILABLE, "lock-timeout", "Account busy",
+                        "Another transfer is holding this account; retry with the same Idempotency-Key."));
     }
 
     @ExceptionHandler(Exception.class)

@@ -21,6 +21,10 @@ public class Transfer {
     private Long id;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
+    private TransferKind kind;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TransferStatus status;
 
@@ -36,6 +40,9 @@ public class Transfer {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    @Column(name = "reverses_transfer_id", updatable = false)
+    private Long reversesTransferId;
+
     @Column(name = "correlation_id", updatable = false)
     private String correlationId;
 
@@ -45,17 +52,30 @@ public class Transfer {
     protected Transfer() {
     }
 
-    private Transfer(long fromAccountId, long toAccountId, long amountCents, String correlationId) {
+    private Transfer(TransferKind kind, long fromAccountId, long toAccountId, long amountCents,
+            Long reversesTransferId, String correlationId) {
+        this.kind = kind;
         this.status = TransferStatus.PENDING;
         this.fromAccountId = fromAccountId;
         this.toAccountId = toAccountId;
         this.amountCents = amountCents;
+        this.reversesTransferId = reversesTransferId;
         this.correlationId = correlationId;
         this.createdAt = Instant.now();
     }
 
     public static Transfer pending(long fromAccountId, long toAccountId, long amountCents, String correlationId) {
-        return new Transfer(fromAccountId, toAccountId, amountCents, correlationId);
+        return new Transfer(TransferKind.TRANSFER, fromAccountId, toAccountId, amountCents, null, correlationId);
+    }
+
+    /** A reversal sends the original amount back, from the original recipient to the original sender. */
+    public static Transfer pendingReversal(Transfer original, String correlationId) {
+        return new Transfer(TransferKind.REVERSAL, original.toAccountId, original.fromAccountId,
+                original.amountCents, original.id, correlationId);
+    }
+
+    public boolean isReversible() {
+        return kind == TransferKind.TRANSFER && status == TransferStatus.COMPLETED;
     }
 
     public void complete() {
@@ -79,6 +99,10 @@ public class Transfer {
         return id;
     }
 
+    public TransferKind getKind() {
+        return kind;
+    }
+
     public TransferStatus getStatus() {
         return status;
     }
@@ -97,6 +121,10 @@ public class Transfer {
 
     public String getFailureReason() {
         return failureReason;
+    }
+
+    public Long getReversesTransferId() {
+        return reversesTransferId;
     }
 
     public String getCorrelationId() {

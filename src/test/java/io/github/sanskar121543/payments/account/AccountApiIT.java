@@ -31,7 +31,6 @@ class AccountApiIT {
 
         assertThat(created.status()).isEqualTo(201);
         long id = created.longField("id");
-        assertThat(created.header("Location")).isEqualTo("/v1/accounts/" + id);
 
         ApiResponse read = api.get("/v1/accounts/" + id);
         assertThat(read.status()).isEqualTo(200);

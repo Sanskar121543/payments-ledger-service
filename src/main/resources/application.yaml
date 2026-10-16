@@ -42,3 +42,6 @@ payments:
     idle-in-transaction-timeout: 15s
   security:
     api-keys: ${API_KEY_HASHES:}
+  idempotency:
+    retention: 24h
+    purge-interval: 1h

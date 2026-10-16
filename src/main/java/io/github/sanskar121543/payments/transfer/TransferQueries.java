@@ -25,18 +25,24 @@ public class TransferQueries {
     public TransferResponse get(long id) {
         Transfer transfer = transfers.findById(id)
                 .orElseThrow(() -> new NotFoundException("transfer-not-found", "Transfer " + id + " does not exist"));
-        return TransferResponse.of(transfer, entries.findByTransferIdOrderByIdAsc(id));
+        Long reversedBy = transfers.findFirstByReversesTransferIdAndStatus(id, TransferStatus.COMPLETED)
+                .map(Transfer::getId)
+                .orElse(null);
+        return TransferResponse.of(transfer, entries.findByTransferIdOrderByIdAsc(id), reversedBy);
     }
 
     @Transactional(readOnly = true)
     public List<TransferResponse> recent(int limit) {
         List<Transfer> latest = transfers.findAllByOrderByIdDesc(Limit.of(limit));
-        Map<Long, List<LedgerEntry>> entriesByTransfer = entries
-                .findByTransferIdInOrderByIdAsc(latest.stream().map(Transfer::getId).toList())
-                .stream()
+        List<Long> ids = latest.stream().map(Transfer::getId).toList();
+        Map<Long, List<LedgerEntry>> entriesByTransfer = entries.findByTransferIdInOrderByIdAsc(ids).stream()
                 .collect(Collectors.groupingBy(LedgerEntry::getTransferId));
+        Map<Long, Long> reversedBy = transfers.findByReversesTransferIdInAndStatus(ids, TransferStatus.COMPLETED)
+                .stream()
+                .collect(Collectors.toMap(Transfer::getReversesTransferId, Transfer::getId));
         return latest.stream()
-                .map(t -> TransferResponse.of(t, entriesByTransfer.getOrDefault(t.getId(), List.of())))
+                .map(t -> TransferResponse.of(t, entriesByTransfer.getOrDefault(t.getId(), List.of()),
+                        reversedBy.get(t.getId())))
                 .toList();
     }
 }

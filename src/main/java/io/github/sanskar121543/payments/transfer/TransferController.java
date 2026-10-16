@@ -1,18 +1,16 @@
 package io.github.sanskar121543.payments.transfer;
 
-import io.github.sanskar121543.payments.web.Problems;
+import io.github.sanskar121543.payments.web.ApiKeyFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
-import java.net.URI;
 import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,24 +32,17 @@ class TransferController {
     }
 
     @PostMapping
-    ResponseEntity<?> create(@RequestHeader(IDEMPOTENCY_KEY) @Size(min = 1, max = 255) String idempotencyKey,
+    ResponseEntity<String> create(@RequestAttribute(ApiKeyFilter.CLIENT_ID_ATTRIBUTE) String clientId,
+            @RequestHeader(IDEMPOTENCY_KEY) @Size(min = 1, max = 255) String idempotencyKey,
             @Valid @RequestBody TransferRequest request) {
-        return switch (transferService.transfer(request)) {
-            case TransferOutcome.Completed completed -> ResponseEntity
-                    .created(URI.create("/v1/transfers/" + completed.transfer().getId()))
-                    .body(TransferResponse.of(completed.transfer(), completed.entries()));
-            case TransferOutcome.Failed failed -> {
-                ProblemDetail problem = Problems.of(HttpStatus.UNPROCESSABLE_CONTENT, "insufficient-funds",
-                        "Insufficient funds", "Account " + failed.transfer().getFromAccountId()
-                                + " cannot cover " + failed.transfer().getAmountCents() + " cents");
-                problem.setProperty("transferId", failed.transfer().getId());
-                problem.setProperty("status", failed.transfer().getStatus());
-                yield ResponseEntity.unprocessableContent().body(problem);
-            }
-            case TransferOutcome.AccountNotFound missing -> ResponseEntity.unprocessableContent()
-                    .body(Problems.of(HttpStatus.UNPROCESSABLE_CONTENT, "account-not-found", "Unknown account",
-                            "Account " + missing.accountId() + " does not exist"));
-        };
+        return transferService.transfer(clientId, idempotencyKey, request).toResponseEntity();
+    }
+
+    @PostMapping("/{id}/reversals")
+    ResponseEntity<String> reverse(@RequestAttribute(ApiKeyFilter.CLIENT_ID_ATTRIBUTE) String clientId,
+            @RequestHeader(IDEMPOTENCY_KEY) @Size(min = 1, max = 255) String idempotencyKey,
+            @PathVariable long id) {
+        return transferService.reverse(clientId, idempotencyKey, id).toResponseEntity();
     }
 
     @GetMapping("/{id}")
