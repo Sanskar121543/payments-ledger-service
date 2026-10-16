@@ -1,5 +1,7 @@
 package io.github.sanskar121543.payments.account;
 
+import io.github.sanskar121543.payments.common.LedgerMetrics;
+import io.github.sanskar121543.payments.idempotency.StoredResponse;
 import io.github.sanskar121543.payments.ledger.EntryResponse;
 import io.github.sanskar121543.payments.web.ApiKeyFilter;
 import jakarta.validation.Valid;
@@ -23,16 +25,20 @@ import org.springframework.web.bind.annotation.RestController;
 class AccountController {
 
     private final AccountService accountService;
+    private final LedgerMetrics metrics;
 
-    AccountController(AccountService accountService) {
+    AccountController(AccountService accountService, LedgerMetrics metrics) {
         this.accountService = accountService;
+        this.metrics = metrics;
     }
 
     @PostMapping
     ResponseEntity<String> create(@RequestAttribute(ApiKeyFilter.CLIENT_ID_ATTRIBUTE) String clientId,
             @RequestHeader("Idempotency-Key") @Size(min = 1, max = 255) String idempotencyKey,
             @Valid @RequestBody CreateAccountRequest request) {
-        return accountService.create(clientId, idempotencyKey, request).toResponseEntity();
+        StoredResponse response = accountService.create(clientId, idempotencyKey, request);
+        metrics.write("account", response);
+        return response.toResponseEntity();
     }
 
     @GetMapping

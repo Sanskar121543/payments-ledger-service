@@ -1,5 +1,7 @@
 package io.github.sanskar121543.payments.transfer;
 
+import io.github.sanskar121543.payments.common.LedgerMetrics;
+import io.github.sanskar121543.payments.idempotency.StoredResponse;
 import io.github.sanskar121543.payments.web.ApiKeyFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -25,24 +27,30 @@ class TransferController {
 
     private final TransferService transferService;
     private final TransferQueries transferQueries;
+    private final LedgerMetrics metrics;
 
-    TransferController(TransferService transferService, TransferQueries transferQueries) {
+    TransferController(TransferService transferService, TransferQueries transferQueries, LedgerMetrics metrics) {
         this.transferService = transferService;
         this.transferQueries = transferQueries;
+        this.metrics = metrics;
     }
 
     @PostMapping
     ResponseEntity<String> create(@RequestAttribute(ApiKeyFilter.CLIENT_ID_ATTRIBUTE) String clientId,
             @RequestHeader(IDEMPOTENCY_KEY) @Size(min = 1, max = 255) String idempotencyKey,
             @Valid @RequestBody TransferRequest request) {
-        return transferService.transfer(clientId, idempotencyKey, request).toResponseEntity();
+        StoredResponse response = transferService.transfer(clientId, idempotencyKey, request);
+        metrics.write("transfer", response);
+        return response.toResponseEntity();
     }
 
     @PostMapping("/{id}/reversals")
     ResponseEntity<String> reverse(@RequestAttribute(ApiKeyFilter.CLIENT_ID_ATTRIBUTE) String clientId,
             @RequestHeader(IDEMPOTENCY_KEY) @Size(min = 1, max = 255) String idempotencyKey,
             @PathVariable long id) {
-        return transferService.reverse(clientId, idempotencyKey, id).toResponseEntity();
+        StoredResponse response = transferService.reverse(clientId, idempotencyKey, id);
+        metrics.write("reversal", response);
+        return response.toResponseEntity();
     }
 
     @GetMapping("/{id}")

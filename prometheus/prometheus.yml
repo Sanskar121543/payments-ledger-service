@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+
+scrape_configs:
+  - job_name: payments-ledger
+    metrics_path: /actuator/prometheus
+    # DNS service discovery: names that don't resolve (app2/app3 in the lite profile) simply
+    # produce no target instead of a permanently "down" one.
+    dns_sd_configs:
+      - names: [app1, app2, app3]
+        type: A
+        port: 8080
+        refresh_interval: 10s

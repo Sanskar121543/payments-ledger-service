@@ -2,8 +2,8 @@ name: payments-ledger
 
 # Profiles:
 #   (none)           postgres + kafka only: run the app from your IDE with ./mvnw spring-boot:run
-#   --profile lite   + app1 behind nginx, kafbat-ui (daily work)
-#   --profile full   + app2, app3 (tests and demos)
+#   --profile lite   + app1 behind nginx, kafbat-ui, prometheus (daily work)
+#   --profile full   + app2, app3, grafana (tests and demos)
 
 x-app-env: &app-env
   DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
@@ -11,6 +11,8 @@ x-app-env: &app-env
   DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
   API_KEY_HASHES: ${API_KEY_HASHES:?set API_KEY_HASHES in .env}
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  # The dashboard's demo buttons send their requests through nginx, so they spread over every instance.
+  PAYMENTS_DEMO_BASE_URL: http://nginx
   # Heap is fixed at 320 MB inside a 768 MB container; the rest is metaspace, code cache and threads.
   JAVA_OPTS: >-
     -Xms320m -Xmx320m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m
@@ -139,6 +141,40 @@ services:
     depends_on:
       app1:
         condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    profiles: [lite, full]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9091}:9090"
+    mem_limit: 256m
+    memswap_limit: 256m
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    profiles: [full]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/payments-ledger.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    mem_limit: 384m
+    memswap_limit: 384m
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:

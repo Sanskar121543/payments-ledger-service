@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Payments Ledger</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/chart.js/4.5.1/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1>Payments Ledger</h1>
+    <p class="muted">Every transfer writes two ledger entries that sum to zero. Synthetic data only.</p>
+  </div>
+  <form id="key-form" class="key-form" autocomplete="off">
+    <label for="api-key" class="muted">API key</label>
+    <input id="api-key" type="password" placeholder="DEMO_API_KEY from .env" spellcheck="false">
+    <button type="submit">Connect</button>
+  </form>
+  <div class="topbar-meta">
+    <span id="stream-status" class="pill">Not connected</span>
+    <button id="theme-toggle" class="ghost" type="button" aria-label="Toggle dark mode">Theme</button>
+  </div>
+</header>
+
+<main class="grid">
+  <section class="card hero" aria-labelledby="invariant-title">
+    <h2 id="invariant-title">Invariant check</h2>
+    <p class="muted">Sum of every ledger entry ever written</p>
+    <p id="invariant-sum" class="hero-figure">—</p>
+    <p id="invariant-status" class="status">Waiting for data</p>
+    <dl class="mini-stats">
+      <div><dt>Cached balances out of sync</dt><dd id="inv-mismatch">—</dd></div>
+      <div><dt>Unbalanced transfers</dt><dd id="inv-unbalanced">—</dd></div>
+      <div><dt>Customers below zero</dt><dd id="inv-negative">—</dd></div>
+    </dl>
+  </section>
+
+  <section class="card stats" aria-label="Totals">
+    <div class="stat"><span class="muted">Accounts</span><strong id="stat-accounts">—</strong></div>
+    <div class="stat"><span class="muted">Transfers</span><strong id="stat-transfers">—</strong></div>
+    <div class="stat"><span class="muted">Ledger entries</span><strong id="stat-entries">—</strong></div>
+    <div class="stat"><span class="muted">Issued by funding account</span><strong id="stat-issued">—</strong></div>
+  </section>
+
+  <section class="card balances" aria-labelledby="balances-title">
+    <div class="card-head">
+      <h2 id="balances-title">Customer balances</h2>
+      <button class="ghost" type="button" data-toggle-table="balances">Show table</button>
+    </div>
+    <p class="muted">Newest 12 customer accounts</p>
+    <div class="chart-box"><canvas id="balances-chart" aria-label="Customer balances bar chart" role="img"></canvas></div>
+    <div class="table-view" id="balances-table" hidden></div>
+  </section>
+
+  <section class="card feed" aria-labelledby="feed-title">
+    <div class="card-head">
+      <h2 id="feed-title">Live transfer feed</h2>
+      <span class="muted" id="feed-count">0 events</span>
+    </div>
+    <p class="muted">From Kafka via the activity consumer. Click a row to see its ledger entries.</p>
+    <ol id="feed" class="feed-list"></ol>
+  </section>
+
+  <section class="card demo" aria-labelledby="demo-retry-title">
+    <div class="card-head">
+      <h2 id="demo-retry-title">Send the same request 10 times</h2>
+      <button id="run-retry" type="button">Run</button>
+    </div>
+    <p class="muted">10 concurrent POSTs with one Idempotency-Key through nginx. Expect one transfer and 9 replays.</p>
+    <div id="retry-result" class="demo-result" aria-live="polite"></div>
+  </section>
+
+  <section class="card demo" aria-labelledby="demo-concurrent-title">
+    <div class="card-head">
+      <h2 id="demo-concurrent-title">Fire 100 concurrent transfers</h2>
+      <button id="run-concurrent" type="button">Run</button>
+    </div>
+    <p class="muted">Random transfers between 5 fresh accounts, spread over every instance. The total must not change.</p>
+    <div id="concurrent-result" class="demo-result" aria-live="polite"></div>
+    <div class="chart-row" id="concurrent-charts" hidden>
+      <div class="chart-box small"><canvas id="instance-chart" role="img" aria-label="Requests per instance"></canvas></div>
+      <div class="chart-box small"><canvas id="before-after-chart" role="img" aria-label="Balances before and after"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card detail" id="detail" hidden aria-labelledby="detail-title">
+    <div class="card-head">
+      <h2 id="detail-title">Transfer</h2>
+      <button class="ghost" type="button" id="detail-close">Close</button>
+    </div>
+    <div id="detail-body"></div>
+  </section>
+</main>
+
+<footer class="footer muted">
+  <span id="served-by">Last API call served by —</span>
+  <span>Grafana <a href="http://localhost:3000" target="_blank" rel="noopener">:3000</a> ·
+    Prometheus <a href="http://localhost:9091" target="_blank" rel="noopener">:9091</a> ·
+    Kafka UI <a href="http://localhost:8090" target="_blank" rel="noopener">:8090</a></span>
+</footer>
+</body>
+</html>

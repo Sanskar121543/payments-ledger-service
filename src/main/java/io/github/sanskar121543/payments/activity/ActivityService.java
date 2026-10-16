@@ -1,6 +1,7 @@
 package io.github.sanskar121543.payments.activity;
 
 import io.github.sanskar121543.payments.common.InstanceInfo;
+import io.github.sanskar121543.payments.common.LedgerMetrics;
 import io.github.sanskar121543.payments.events.TransferCompletedEvent;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -25,14 +26,16 @@ public class ActivityService {
 
     private final JdbcTemplate jdbc;
     private final InstanceInfo instance;
+    private final LedgerMetrics metrics;
     private final long largeAmountCents;
     private final int velocityMaxPerMinute;
 
-    public ActivityService(JdbcTemplate jdbc, InstanceInfo instance,
+    public ActivityService(JdbcTemplate jdbc, InstanceInfo instance, LedgerMetrics metrics,
             @Value("${payments.rules.large-amount-cents}") long largeAmountCents,
             @Value("${payments.rules.velocity-max-per-minute}") int velocityMaxPerMinute) {
         this.jdbc = jdbc;
         this.instance = instance;
+        this.metrics = metrics;
         this.largeAmountCents = largeAmountCents;
         this.velocityMaxPerMinute = velocityMaxPerMinute;
     }
@@ -60,7 +63,34 @@ public class ActivityService {
                 """, event.eventId(), event.transferId(), event.kind(), event.fromAccountId(), event.toAccountId(),
                 event.amountCents(), event.servedBy(), instance.id(), event.correlationId(), utc(event.occurredAt()),
                 largeAmount, highVelocity);
+        if (inserted == 1) {
+            if (largeAmount) {
+                metrics.ruleHit("large_amount");
+            }
+            if (highVelocity) {
+                metrics.ruleHit("high_velocity");
+            }
+        }
         return inserted == 1;
+    }
+
+    /**
+     * Rows newer than the cursor that are at least a second old. Ids are handed out at insert time but
+     * become visible at commit, so a brand-new row could still have a smaller id than one we have already
+     * shown; waiting a second lets those in-flight inserts commit first.
+     */
+    @Transactional(readOnly = true)
+    public List<ActivityItem> settledAfter(long cursor, int limit) {
+        return jdbc.query(SELECT_ITEM + " WHERE id > ? AND received_at < now() - interval '1 second' ORDER BY id LIMIT ?",
+                ActivityService::map, cursor, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public long latestSettledId() {
+        Long id = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) FROM activity_feed WHERE received_at < now() - interval '1 second'",
+                Long.class);
+        return id == null ? 0 : id;
     }
 
     @Transactional(readOnly = true)

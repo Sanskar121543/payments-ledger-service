@@ -1,5 +1,6 @@
 package io.github.sanskar121543.payments.web;
 
+import io.github.sanskar121543.payments.common.LedgerMetrics;
 import io.github.sanskar121543.payments.idempotency.IdempotencyKeyInUseException;
 import java.net.URI;
 import java.util.List;
@@ -28,6 +29,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    private final LedgerMetrics metrics;
+
+    public ApiExceptionHandler(LedgerMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<ProblemDetail> notFound(NotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -36,6 +43,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(IdempotencyKeyInUseException.class)
     ResponseEntity<ProblemDetail> keyInUse(IdempotencyKeyInUseException e) {
+        metrics.lockTimeout("idempotency_key");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .header(HttpHeaders.RETRY_AFTER, "1")
                 .body(Problems.of(HttpStatus.CONFLICT, "idempotency-key-in-use", "Request still in progress",
@@ -47,6 +55,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(PessimisticLockingFailureException.class)
     ResponseEntity<ProblemDetail> lockTimeout(PessimisticLockingFailureException e) {
         log.warn("Lock wait gave up: {}", e.getMostSpecificCause().getMessage());
+        metrics.lockTimeout("account");
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "1")
                 .body(Problems.of(HttpStatus.SERVICE_UNAVAILABLE, "lock-timeout", "Account busy",

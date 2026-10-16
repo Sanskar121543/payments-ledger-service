@@ -41,7 +41,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 3
+        size: 4
 
 server:
   shutdown: graceful
@@ -50,7 +50,21 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  info:
+    java:
+      enabled: true
+    os:
+      enabled: true
+    process:
+      enabled: true
+  metrics:
+    tags:
+      # Not "instance": Prometheus already uses that label for the scrape target.
+      app_instance: ${payments.instance-id}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 logging:
   structured:
@@ -76,3 +90,8 @@ payments:
   rules:
     large-amount-cents: 100000
     velocity-max-per-minute: 5
+  demo:
+    enabled: true
+    # Where the demo buttons send their real HTTP requests. Empty means this instance itself;
+    # compose points it at nginx so the requests spread over all instances.
+    base-url: ""
