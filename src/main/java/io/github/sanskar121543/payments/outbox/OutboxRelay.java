@@ -34,15 +34,18 @@ public class OutboxRelay {
     private final SingletonJobLock jobLock;
     private final int batchSize;
     private final Duration sendTimeout;
+    private final Duration maxBatchDuration;
 
     public OutboxRelay(OutboxRepository repository, KafkaTemplate<String, String> kafka, SingletonJobLock jobLock,
             @Value("${payments.outbox.batch-size}") int batchSize,
-            @Value("${payments.outbox.send-timeout}") Duration sendTimeout) {
+            @Value("${payments.outbox.send-timeout}") Duration sendTimeout,
+            @Value("${payments.outbox.max-batch-duration}") Duration maxBatchDuration) {
         this.repository = repository;
         this.kafka = kafka;
         this.jobLock = jobLock;
         this.batchSize = batchSize;
         this.sendTimeout = sendTimeout;
+        this.maxBatchDuration = maxBatchDuration;
     }
 
     /**
@@ -56,12 +59,16 @@ public class OutboxRelay {
             return 0;
         }
         List<OutboxEvent> batch = repository.findByPublishedAtIsNullOrderByIdAsc(Limit.of(batchSize));
+        long deadline = System.nanoTime() + maxBatchDuration.toNanos();
         int published = 0;
         for (OutboxEvent event : batch) {
-            if (!send(event)) {
+            if (System.nanoTime() > deadline || !send(event)) {
                 break;
             }
             event.markPublished(Instant.now());
+            // Write published_at now rather than at commit: the statement keeps this transaction from
+            // sitting idle, which Postgres ends after idle_in_transaction_session_timeout (10s).
+            repository.flush();
             published++;
         }
         return published;

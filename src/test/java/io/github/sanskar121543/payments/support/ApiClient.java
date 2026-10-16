@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -117,13 +118,25 @@ public class ApiClient {
         try {
             HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
             String raw = response.body();
-            JsonNode body = raw == null || raw.isBlank() ? null : JSON.readTree(raw);
+            JsonNode body = parseJson(raw);
             return new ApiResponse(response.statusCode(), response.headers(), raw, body);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
+        }
+    }
+
+    // nginx's own error pages are HTML; only JSON bodies are parsed.
+    private static JsonNode parseJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return JSON.readTree(raw);
+        } catch (JacksonException notJson) {
+            return null;
         }
     }
 

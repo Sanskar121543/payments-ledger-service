@@ -61,6 +61,19 @@ class MultiInstanceConcurrencyIT {
     }
 
     @Test
+    void nginxHidesManagementEndpointsAndRejectsPathTricks() {
+        ApiClient noKey = api.withKey(null);
+
+        assertThat(noKey.get("/actuator/health").status()).isEqualTo(200);
+        assertThat(noKey.get("/actuator/prometheus").status()).isEqualTo(404);
+        assertThat(noKey.get("/actuator").status()).isEqualTo(404);
+        assertThat(noKey.get("/%61ctuator/prometheus").status()).isEqualTo(404);
+        assertThat(noKey.get("/actuator;x/prometheus").status()).isEqualTo(400);
+        assertThat(noKey.get("/v1;x/accounts").status()).isEqualTo(400);
+        assertThat(noKey.get("/%761/accounts").status()).isEqualTo(401);
+    }
+
+    @Test
     void oneKeySentConcurrentlyToDifferentInstancesStillMakesOneTransfer() {
         long alice = api.fundedAccount("alice", 10_000);
         long bob = api.createAccount("bob");

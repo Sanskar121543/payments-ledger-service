@@ -106,9 +106,9 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
 ## 9. API key authentication
 
 - **Choice:**
-  - A `OncePerRequestFilter` on `/v1/**` checks `X-API-Key`.
+  - A `OncePerRequestFilter` checks `X-API-Key` on **every path except an allowlist**: the dashboard's static files and `/actuator/**`. Actuator stays open inside the network so Prometheus can scrape; nginx hides it from outside (§12).
+  - The allowlist is checked against the **decoded path without `;` parameters**, which is what Spring MVC routes on. An earlier version checked the raw URI for a `/v1/` prefix, so `/v1;x/accounts` or `/%761/accounts` skipped the check while still reaching the controller. The code review caught it, and `AccountApiIT.pathTricksDoNotSkipTheKeyCheck` now covers it.
   - The server knows only SHA-256 hashes, from `.env` (`API_KEY_HASHES`), and compares them with `MessageDigest.isEqual`, which runs in constant time.
-  - Open without a key: the dashboard's static files and `/actuator/health`.
 - **Alternatives:** Spring Security (the upgrade path), OAuth2 or JWT.
 - **Why:** about 40 lines you can explain completely. SHA-256 is enough for long random keys; bcrypt is for human passwords.
 
@@ -138,8 +138,9 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   - **DNS:** `resolve` with Docker's DNS, so one config works for 1 or 3 instances and picks up a restarted container's new IP.
   - **Keep-alive:** 30 s, shorter than Tomcat's 60 s.
   - **POST retries:** `proxy_next_upstream error timeout non_idempotent` on `/v1/**`.
+  - **Edge rules:** paths containing `;` get 400. Everything under `/actuator` except `/actuator/health` gets 404. nginx is published on `127.0.0.1` only, because the demo key in `.env.example` is public.
 - **Why the POST retries are safe:** nginx refuses to resend a POST by default, because it can't know whether that is safe. Ours is, because every `/v1` POST requires an Idempotency-Key. The demo routes have no key, so they are excluded.
-- **Evidence:** [`results/phase-3-failover-run.md`](results/phase-3-failover-run.md). With app2 SIGKILLed mid-run, all 600 transfers got a final answer and **no client retries were needed**.
+- **Evidence:** [`results/phase-3-failover-run.md`](results/phase-3-failover-run.md). With app2 SIGKILLed mid-run, all 600 transfers got a final answer and **no client retries were needed**. `InstanceFailoverIT` also asserts, from nginx's JSON access log, that at least one `/v1/transfers` request was tried on two upstreams.
 
 ## 13. Kafka: key, partitions, consumer (default D7)
 
@@ -148,6 +149,11 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   - Each event is written to the `activity_feed` read model in one transaction.
   - `event_id` is unique, so redeliveries (at-least-once) become no-ops.
   - The offset is committed after the transaction.
+- **Failures** (code review fix):
+  - Spring Kafka's default handler retried a record 10 times with no pause, then skipped it and committed the offset. That is silent loss.
+  - Now a `DefaultErrorHandler` retries transient failures (database down, lock timeouts) with exponential back-off, capped at 30 s, for as long as it takes. The partition waits rather than losing an event, and consumer lag in Grafana shows it.
+  - Records that can never succeed (unreadable JSON, invalid data) go straight to `transfer.completed.DLT`.
+  - The consumer reads events tolerantly (unknown fields ignored), so a newer producer can add fields during a rolling deploy.
 - **Rules:**
   - `amount >= $1,000`.
   - More than 5 sends from one account within 60 s of event time.
@@ -171,6 +177,9 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   - then setting `published_at`.
 
   Delivery is at-least-once, and the consumer drops duplicates. `OutboxCrashIT` shows the same crash now delivers the event exactly once to the feed.
+- **Keeping the relay's transaction short** (code review fix):
+  - Each acknowledged row's `published_at` is flushed immediately, not at commit, so the transaction never sits idle long enough for Postgres's 10 s `idle_in_transaction_session_timeout` to kill it. If it were killed, its advisory lock would be released while it was still sending, and a second relay could start.
+  - A batch also stops starting new sends after 4 s.
 - **Alternatives:**
   - Debezium/CDC (more moving parts).
   - Kafka transactions (they don't cover the database).
@@ -181,8 +190,9 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
 
 - **Choice:**
   - Each instance tails the shared `activity_feed` table every second and pushes new rows over SSE.
-  - It only reads rows at least 1 s old: ids are assigned at insert but become visible at commit, so a row with a smaller id can appear later.
-  - Reconnects resume with `Last-Event-ID`.
+  - Ids are assigned at insert but become visible at commit, so a row with a smaller id can appear later. So every tick re-reads the 500 rows behind the newest one sent, and each subscriber remembers the last 2,000 ids it was sent. That fills such gaps without duplicates.
+  - Reconnects resume with `Last-Event-ID`, **clamped** to the last 25 rows. An earlier version trusted any value, so one client sending `Last-Event-ID: 0` held back every other dashboard on that instance (code review fix).
+  - Each subscriber has its own virtual thread and a bounded queue for socket writes. A browser that stops reading stalls only its own stream; if its queue fills, its stream is closed so it reconnects.
   - The browser reads the stream with `fetch()` plus a small parser, because `EventSource` cannot send the `X-API-Key` header.
   - A heartbeat every 15 s keeps nginx and the browser from closing an idle connection.
 - **Alternatives:**
@@ -204,7 +214,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   - writes by operation and result;
   - lock timeouts by scope;
   - rule hits;
-  - an outbox-backlog gauge.
+  - an outbox-backlog gauge. It is refreshed every 5 s in the background: a gauge that queried the database during the scrape would make all of an instance's metrics disappear while the database is down.
 
 ## 18. Testing strategy
 
@@ -253,8 +263,29 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   | `2026-10-16T14-30-48-313Z.json` | G1 + relay `linger.ms=0` | 467.8 ms | 880.2 ms | 17 |
 
   In the first run, Prometheus showed full GC pauses of 160–300 ms (code-cache and metaspace thresholds). While one instance is paused it keeps its row locks, so requests on the other two queue behind it: Hikari reported up to 16 pending connections.
+
+  Those GC and Hikari figures were read live from Prometheus during the session and were **not** saved to a file. Since then, `scripts/load-test.sh` saves them for every run as `results/k6/<timestamp>-prometheus.txt`. All three runs above used Grafana with its earlier 384 MB limit.
 - **Grafana:** given 512 MB, its documented minimum. At 384 MB it spent its time garbage collecting.
 
-## 21. Who wrote the core logic (default D5)
+## 21. What the code review found and what changed
+
+A multi-agent review of the finished code produced these findings. Each was checked against the code and then fixed:
+
+| Finding | Fix |
+|---|---|
+| `/v1;x/accounts` and `/%761/accounts` skipped the API-key check (raw-URI prefix match) | Deny by default; check the decoded path Spring routes on; tests for both (§9) |
+| `/actuator;x/prometheus` got past nginx's `/actuator/` block; nginx was published on all interfaces with a public demo key | `location ^~ /actuator`, `;` rejected, loopback-only port, `info` endpoint removed (§12) |
+| The consumer silently dropped a record after 10 instant retries | Back-off retries for transient errors, dead-letter topic for poison records, tolerant reader (§13) |
+| The relay's transaction could sit idle past 10 s and be killed mid-batch | Flush after every acknowledgement; 4 s batch budget (§14) |
+| One reconnecting dashboard could starve the others; a stalled browser blocked the shared scheduler thread | Clamped resume point; per-subscriber virtual thread and queue; re-read window instead of a 1 s settle delay (§15) |
+| The outbox gauge queried the database during every scrape | Background refresh (§17) |
+| The insufficient-funds problem had two `status` members | The transfer's status is now `transferStatus`; the test asserts `status` is 422 |
+| `correlation_id` could be changed while a transfer was `PENDING` | V6 migration adds it to the guard; new test for the `PENDING` branch |
+| A NUL character in an account name caused a 500 | Validation rejects control characters (400) |
+| Demo runs had no concurrency limit | One run per instance (429 `demo-busy`); demos are off unless enabled (compose enables them) |
+| The failover test didn't check nginx's re-send; `smoke.sh` didn't check that 3 instances answered | Both assert it now |
+| The before-locking evidence named a test that wasn't on the tag it cited | Tag `phase-1-concurrency-evidence` has phase-1 code plus that exact test, and the evidence was re-run there |
+
+## 22. Who wrote the core logic (default D5)
 
 You asked me to finish the project overnight, so I implemented `TransferService`, `IdempotencyService`/`RequestFingerprint` and `OutboxRelay` myself. Branch `practice/core-logic` has those three reset to stubs, with all their tests still in place, so you can write them yourself as your original plan intended, then compare with `main`.

@@ -15,4 +15,11 @@ class KafkaTopicConfig {
             @Value("${payments.kafka.partitions}") int partitions) {
         return TopicBuilder.name(topic).partitions(partitions).replicas(1).build();
     }
+
+    // Same partition count: a dead letter keeps the partition of the record that failed.
+    @Bean
+    NewTopic transferCompletedDeadLetterTopic(@Value("${payments.kafka.topic}") String topic,
+            @Value("${payments.kafka.partitions}") int partitions) {
+        return TopicBuilder.name(topic + ".DLT").partitions(partitions).replicas(1).build();
+    }
 }

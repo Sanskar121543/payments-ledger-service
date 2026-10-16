@@ -61,6 +61,25 @@ class AccountApiIT {
     }
 
     @Test
+    void pathTricksDoNotSkipTheKeyCheck() {
+        ApiClient noKey = api.withKey(null);
+
+        assertThat(noKey.get("/v1;x/accounts").status()).isEqualTo(401);
+        assertThat(noKey.get("/%761/accounts").status()).isEqualTo(401);
+        assertThat(noKey.get("/v1/accounts;x").status()).isEqualTo(401);
+        assertThat(noKey.get("/anything-else").status()).as("deny by default").isEqualTo(401);
+    }
+
+    @Test
+    void controlCharactersInNamesAreRejectedAsValidationErrors() {
+        ApiResponse response = api.postRaw("/v1/accounts", "{\"name\":\"a\\u0000b\"}",
+                UUID.randomUUID().toString());
+
+        assertThat(response.status()).isEqualTo(400);
+        assertThat(response.problemType()).isEqualTo("/problems/validation");
+    }
+
+    @Test
     void healthIsOpenWithoutAKey() {
         assertThat(api.withKey(null).get("/actuator/health").status()).isEqualTo(200);
     }

@@ -27,7 +27,8 @@ class TransferResponses {
                 "Insufficient funds", "Account " + transfer.getFromAccountId() + " cannot cover "
                         + transfer.getAmountCents() + " cents");
         problem.setProperty("transferId", transfer.getId());
-        problem.setProperty("status", transfer.getStatus());
+        // Not "status": that member is reserved for the HTTP status code in RFC 9457.
+        problem.setProperty("transferStatus", transfer.getStatus());
         return responses.problem(problem);
     }
 

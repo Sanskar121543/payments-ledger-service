@@ -95,6 +95,11 @@ public final class LedgerTopology implements AutoCloseable {
         return app;
     }
 
+    /** nginx's JSON access log, one line per request, including every upstream it tried. */
+    public String nginxAccessLog() {
+        return nginx.getLogs();
+    }
+
     public ApiClient viaNginx() {
         return new ApiClient("http://" + nginx.getHost() + ":" + nginx.getMappedPort(80), ApiClient.TEST_KEY);
     }

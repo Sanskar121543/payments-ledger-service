@@ -74,22 +74,14 @@ public class ActivityService {
         return inserted == 1;
     }
 
-    /**
-     * Rows newer than the cursor that are at least a second old. Ids are handed out at insert time but
-     * become visible at commit, so a brand-new row could still have a smaller id than one we have already
-     * shown; waiting a second lets those in-flight inserts commit first.
-     */
     @Transactional(readOnly = true)
-    public List<ActivityItem> settledAfter(long cursor, int limit) {
-        return jdbc.query(SELECT_ITEM + " WHERE id > ? AND received_at < now() - interval '1 second' ORDER BY id LIMIT ?",
-                ActivityService::map, cursor, limit);
+    public List<ActivityItem> after(long idExclusive, int limit) {
+        return jdbc.query(SELECT_ITEM + " WHERE id > ? ORDER BY id LIMIT ?", ActivityService::map, idExclusive, limit);
     }
 
     @Transactional(readOnly = true)
-    public long latestSettledId() {
-        Long id = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) FROM activity_feed WHERE received_at < now() - interval '1 second'",
-                Long.class);
+    public long latestId() {
+        Long id = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM activity_feed", Long.class);
         return id == null ? 0 : id;
     }
 

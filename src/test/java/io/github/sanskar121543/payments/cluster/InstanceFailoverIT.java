@@ -115,7 +115,12 @@ class InstanceFailoverIT {
         assertThat(attempts.stream().filter(a -> a.finishedAt.isAfter(settled)))
                 .noneMatch(a -> "app2".equals(a.finalResponse.header("X-Served-By")));
 
-        log.info("finals={} clientRetries={}", attempts.stream()
+        long resentByNginx = topology.nginxAccessLog().lines()
+                .filter(line -> line.contains("\"uri\":\"/v1/transfers\"") && line.matches(".*\"upstream\":\"[^\"]*, .*"))
+                .count();
+        assertThat(resentByNginx).as("nginx moved requests that hit the dead instance to a live one").isPositive();
+
+        log.info("resentByNginx={} finals={} clientRetries={}", resentByNginx, attempts.stream()
                         .collect(Collectors.groupingBy(a -> a.finalResponse.status(), Collectors.counting())),
                 attempts.stream().mapToInt(a -> a.retries).sum());
     }

@@ -52,6 +52,10 @@ class TransferIT {
 
         assertThat(response.status()).isEqualTo(422);
         assertThat(response.problemType()).isEqualTo("/problems/insufficient-funds");
+        assertThat(response.body().get("status").asInt()).as("RFC 9457: status is the HTTP code").isEqualTo(422);
+        assertThat(response.textField("transferStatus")).isEqualTo("FAILED");
+        assertThat(response.rawBody().indexOf("\"status\"")).as("no duplicate status member")
+                .isEqualTo(response.rawBody().lastIndexOf("\"status\""));
         long transferId = response.longField("transferId");
         ApiResponse stored = api.get("/v1/transfers/" + transferId);
         assertThat(stored.textField("status")).isEqualTo("FAILED");

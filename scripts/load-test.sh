@@ -11,7 +11,8 @@ set -a; source .env; set +a
 
 export RATE="${1:-200}"
 export DURATION="${2:-60s}"
-export GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(git diff --quiet 2>/dev/null || echo '-dirty')"
+# -dirty if anything outside results/ differs from HEAD, staged or not: the image is built from the working tree.
+export GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(git diff --quiet HEAD -- . ':!results' 2>/dev/null || echo '-dirty')"
 export DOCKER_INFO="$(docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes RAM visible to Docker, {{.OperatingSystem}}, engine {{.ServerVersion}}')"
 export TOPOLOGY="nginx + app1/app2/app3 (768 MB each) + postgres + kafka, compose profile full"
 other=$(docker ps --format '{{.Names}}' | grep -cv '^payments-ledger-' || true)
@@ -26,6 +27,29 @@ stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
     | grep -E 'NAME|payments-ledger' > "results/k6/${stamp}-docker-stats.txt" ) &
 stats_pid=$!
 
-docker compose --profile full --profile load run --rm k6
+status=0
+docker compose --profile full --profile load run --rm k6 || status=$?
 wait "$stats_pid" || true
-echo "Results: results/k6/latest.md (and results/k6/${stamp}-docker-stats.txt)"
+
+# Server-side figures for the run (warm-up + measured part), so tuning claims can point at a file.
+case "$DURATION" in
+  *m) seconds=$(( ${DURATION%m} * 60 + 30 )) ;;
+  *s) seconds=$(( ${DURATION%s} + 30 )) ;;
+  *) seconds=300 ;;
+esac
+prometheus="http://localhost:${PROMETHEUS_PORT:-9091}/api/v1/query"
+{
+  for query in \
+    "max by (app_instance, gc, cause) (max_over_time(jvm_gc_pause_seconds_max[${seconds}s]))" \
+    "max by (app_instance) (max_over_time(hikaricp_connections_pending[${seconds}s]))" \
+    "max by (app_instance) (max_over_time(hikaricp_connections_acquire_seconds_max[${seconds}s]))" \
+    "max(max_over_time(ledger_outbox_unpublished[${seconds}s]))" \
+    "sum by (scope) (increase(ledger_lock_timeouts_total[${seconds}s]))"; do
+    echo "# $query"
+    curl -sSG "$prometheus" --data-urlencode "query=$query" || echo "(prometheus not reachable)"
+    echo
+  done
+} > "results/k6/${stamp}-prometheus.txt"
+
+echo "Results: results/k6/latest.md, results/k6/${stamp}-docker-stats.txt, results/k6/${stamp}-prometheus.txt"
+exit "$status"

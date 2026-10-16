@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 import io.github.sanskar121543.payments.events.TransferCompletedEvent;
 import io.github.sanskar121543.payments.support.ApiClient;
 import io.github.sanskar121543.payments.support.IntegrationTest;
+import io.github.sanskar121543.payments.support.TopicReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.kafka.autoconfigure.KafkaConnectionDetails;
 import org.springframework.kafka.core.KafkaTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -33,6 +35,12 @@ class ActivityConsumerIT {
 
     @Autowired
     JsonMapper jsonMapper;
+
+    @Autowired
+    ActivityService activityService;
+
+    @Autowired
+    KafkaConnectionDetails kafkaConnection;
 
     ApiClient api;
 
@@ -70,6 +78,44 @@ class ActivityConsumerIT {
         long sameSenderLater = api.transfer(ApiClient.FUNDING_ACCOUNT_ID, marker, 5).longField("id");
         awaitFeedItems(sameSenderLater, 1);
         assertThat(feedFor(transferId)).hasSize(1);
+    }
+
+    @Test
+    void recordingTheSameEventTwiceIsANoOp() {
+        TransferCompletedEvent event = new TransferCompletedEvent(UUID.randomUUID(),
+                800_000_000L + (System.nanoTime() % 1_000_000), "TRANSFER", 1L, 2L, 100, "test", null, Instant.now());
+
+        assertThat(activityService.record(event)).isTrue();
+        assertThat(activityService.record(event)).as("the redelivery changes nothing").isFalse();
+        assertThat(feedFor(event.transferId())).hasSize(1);
+    }
+
+    @Test
+    void aMessageThatCanNeverBeProcessedGoesToTheDeadLetterTopicAndTheFeedKeepsFlowing() {
+        String key = String.valueOf(700_000_000L + (System.nanoTime() % 1_000_000));
+        kafka.send(topic, key, "this is not json").join();
+        TransferCompletedEvent next = new TransferCompletedEvent(UUID.randomUUID(),
+                600_000_000L + (System.nanoTime() % 1_000_000), "TRANSFER", Long.parseLong(key), 2L, 100, "test",
+                null, Instant.now());
+        kafka.send(topic, key, jsonMapper.writeValueAsString(next)).join();
+
+        awaitFeedItems(next.transferId(), 1);
+        assertThat(TopicReader.readUntil(String.join(",", kafkaConnection.getBootstrapServers()), topic + ".DLT",
+                rs -> rs.stream().anyMatch(r -> "this is not json".equals(r.value())), Duration.ofSeconds(30)))
+                .anyMatch(r -> "this is not json".equals(r.value()));
+    }
+
+    @Test
+    void eventsWithFieldsFromANewerProducerAreStillRead() {
+        long transferId = 500_000_000L + (System.nanoTime() % 1_000_000);
+        String newer = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"transferId\":" + transferId
+                + ",\"kind\":\"TRANSFER\",\"fromAccountId\":3,\"toAccountId\":4,\"amountCents\":5,"
+                + "\"servedBy\":\"test\",\"correlationId\":null,\"occurredAt\":\"" + Instant.now()
+                + "\",\"addedInVersion2\":\"ignored\"}";
+
+        kafka.send(topic, "3", newer).join();
+
+        awaitFeedItems(transferId, 1);
     }
 
     @Test

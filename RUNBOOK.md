@@ -47,8 +47,8 @@ To follow one request across services, take `X-Correlation-Id` from the response
 ## Demo: kill an instance
 
 ```bash
-docker compose kill app2             # SIGKILL, like a crash
-scripts/smoke.sh                     # still passes: nginx routes around app2
+docker compose kill app2                 # SIGKILL, like a crash
+EXPECT_INSTANCES=2 scripts/smoke.sh      # still passes: nginx routes around app2
 docker compose --profile full up -d  # app2 comes back; nginx finds it again via DNS
 ```
 
@@ -60,6 +60,8 @@ Watch it in Grafana ("Requests per second by instance") and in kafbat-ui. The co
 # Set HARDWARE_NOTE in .env first (CPU, RAM, OS, in double quotes).
 scripts/load-test.sh 100 60s
 ```
+
+It also saves the Prometheus GC, connection-pool and outbox figures for the run as `results/k6/<timestamp>-prometheus.txt`.
 
 - **Writes** `results/k6/<timestamp>.json`, `latest.json`, `latest.md`, and a `docker stats` snapshot.
 - **Exits non-zero** on any status other than 201/422, a broken invariant, or money not conserved.
@@ -86,6 +88,9 @@ docker compose --profile full down    # integration tests start their own contai
 | `503 lock-timeout` + `Retry-After: 1` | An account stayed locked for more than 2 s. Retry with the same key; nothing was written |
 | Dashboard shows "API key rejected" | Paste `DEMO_API_KEY` from `.env`. The server checks it against `API_KEY_HASHES` |
 | Grafana is slow to load right after start | It needs about 30 s and close to its 512 MB limit while it builds its search index |
+| `429 demo-busy` | A demo is already running on that instance. Wait for it to finish |
+| Feed stopped moving, consumer lag rising in Grafana | The consumer is retrying a transient failure (usually the database). It resumes on its own once the cause is fixed. Records that can never be processed are in `transfer.completed.DLT` (see kafbat-ui) |
+| `/actuator/prometheus` returns 404 on port 8088 | Intended: nginx hides management endpoints. Use Prometheus (`:9091`) or `docker compose exec app1 curl -s localhost:8080/actuator/prometheus` |
 
 ## Rotate the API key
 

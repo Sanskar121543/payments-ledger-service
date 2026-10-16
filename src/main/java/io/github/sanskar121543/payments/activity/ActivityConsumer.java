@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
@@ -18,14 +19,16 @@ class ActivityConsumer {
     private static final Logger log = LoggerFactory.getLogger(ActivityConsumer.class);
 
     private final ActivityService activity;
-    private final JsonMapper jsonMapper;
+    private final JsonMapper eventReader;
 
     ActivityConsumer(ActivityService activity, JsonMapper jsonMapper) {
         this.activity = activity;
-        this.jsonMapper = jsonMapper;
+        // Tolerant reader: a newer producer may add fields during a rolling deploy; older consumers ignore them.
+        this.eventReader = jsonMapper.rebuild().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     }
 
     // The offset is committed only after this method returns, so a crash here means redelivery, never loss.
+    // Failures are handled by ConsumerErrorHandling: retried with back-off, or dead-lettered if hopeless.
     @KafkaListener(topics = "${payments.kafka.topic}", groupId = "${spring.kafka.consumer.group-id}")
     void onTransferCompleted(ConsumerRecord<String, String> record) {
         Header correlation = record.headers().lastHeader(TransferCompletedEvent.CORRELATION_ID_HEADER);
@@ -33,7 +36,7 @@ class ActivityConsumer {
             MDC.put(CorrelationIdFilter.MDC_KEY, new String(correlation.value(), StandardCharsets.UTF_8));
         }
         try {
-            TransferCompletedEvent event = jsonMapper.readValue(record.value(), TransferCompletedEvent.class);
+            TransferCompletedEvent event = eventReader.readValue(record.value(), TransferCompletedEvent.class);
             if (!activity.record(event)) {
                 log.info("Duplicate delivery of event {} ignored", event.eventId());
             }

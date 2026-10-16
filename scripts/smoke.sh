@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end check against a running stack: accounts, a transfer, a retry, a reversal, invariants.
 # Usage: scripts/smoke.sh [base-url]   (reads DEMO_API_KEY from .env)
+# EXPECT_INSTANCES (default 3) is how many different app instances must answer: 1 for the lite profile.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -31,8 +32,10 @@ alice_balance=$(get "/v1/accounts/$alice" | field balanceCents)
 bob_balance=$(get "/v1/accounts/$bob" | field balanceCents)
 ok=$(get /v1/ledger/invariants | field ok)
 
-instances=$(for _ in 1 2 3 4 5 6; do curl -sS -o /dev/null -D - "$BASE/actuator/health" | tr -d '\r' | sed -n 's/^X-Served-By: //Ip'; done | sort -u | tr '\n' ' ')
+instances=$(for _ in 1 2 3 4 5 6 7 8 9; do curl -sS -o /dev/null -D - "$BASE/actuator/health" | tr -d '\r' | sed -n 's/^X-Served-By: //Ip'; done | sort -u | tr '\n' ' ')
+seen=$(echo "$instances" | wc -w)
 
 echo "alice=$alice_balance bob=$bob_balance invariants_ok=$ok instances_seen=[$instances]"
 [ "$alice_balance" = "10000" ] && [ "$bob_balance" = "0" ] && [ "$ok" = "true" ] || { echo "FAIL"; exit 1; }
+[ "$seen" -ge "${EXPECT_INSTANCES:-3}" ] || { echo "FAIL: expected ${EXPECT_INSTANCES:-3} instances, saw $seen"; exit 1; }
 echo "SMOKE OK"

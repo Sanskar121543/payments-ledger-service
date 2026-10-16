@@ -27,7 +27,8 @@ class OutboxRelayTest {
     @SuppressWarnings("unchecked")
     private final KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
     private final SingletonJobLock jobLock = mock(SingletonJobLock.class);
-    private final OutboxRelay relay = new OutboxRelay(repository, kafka, jobLock, 100, Duration.ofMillis(200));
+    private final OutboxRelay relay = new OutboxRelay(repository, kafka, jobLock, 100, Duration.ofMillis(200),
+            Duration.ofSeconds(4));
 
     private final List<OutboxEvent> batch = List.of(event("1"), event("2"), event("3"));
 
@@ -49,6 +50,7 @@ class OutboxRelayTest {
         assertThat(sent.getAllValues()).extracting(ProducerRecord::key).containsExactly("1", "2", "3");
         assertThat(sent.getAllValues().getFirst().headers().lastHeader("eventId")).isNotNull();
         assertThat(batch).allMatch(e -> e.getPublishedAt() != null);
+        verify(repository, times(3)).flush();
     }
 
     @Test
@@ -73,6 +75,17 @@ class OutboxRelayTest {
 
         assertThat(relay.relayBatch()).isEqualTo(1);
         assertThat(batch.get(1).getPublishedAt()).isNull();
+    }
+
+    @Test
+    void stopsStartingNewSendsOnceTheBatchTimeBudgetIsUsedUp() {
+        OutboxRelay noTimeLeft = new OutboxRelay(repository, kafka, jobLock, 100, Duration.ofMillis(200),
+                Duration.ZERO);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(acked());
+
+        assertThat(noTimeLeft.relayBatch()).isZero();
+
+        verifyNoInteractions(kafka);
     }
 
     @Test

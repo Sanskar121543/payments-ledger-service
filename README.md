@@ -22,11 +22,11 @@ Everything runs locally for free. All data is synthetic.
 
 | Guarantee | How | Proof |
 |---|---|---|
-| A retried request never moves money twice | The `Idempotency-Key` is claimed with `INSERT … ON CONFLICT DO NOTHING` in the **same transaction** as the ledger entries, and the exact response bytes are stored with it | [`IdempotencyIT.sameKeyRetried10Times_createsExactlyOneTransfer`](src/test/java/io/github/sanskar121543/payments/idempotency/IdempotencyIT.java) |
-| Concurrent transfers are safe across instances | Both account rows are locked (`SELECT … FOR NO KEY UPDATE`) in ascending id order, and the balance is checked under the lock | [`MultiInstanceConcurrencyIT`](src/test/java/io/github/sanskar121543/payments/cluster/MultiInstanceConcurrencyIT.java): 100 concurrent transfers through nginx over 3 instances; [before/after evidence](results/phase-2-before-locking.md) |
-| Losing an instance loses and duplicates nothing | nginx re-sends interrupted POSTs to another instance, which is safe only because of the idempotency keys | [`InstanceFailoverIT`](src/test/java/io/github/sanskar121543/payments/cluster/InstanceFailoverIT.java): SIGKILL one of three instances in the middle of 600 transfers; [recorded run](results/phase-3-failover-run.md) |
+| A retried request never moves money twice | The `Idempotency-Key` is claimed with `INSERT … ON CONFLICT DO NOTHING` in the **same transaction** as the ledger entries, and the exact response bytes are stored with it | [`IdempotencyIT.sameKeyRetried10TimesCreatesExactlyOneTransfer`](src/test/java/io/github/sanskar121543/payments/idempotency/IdempotencyIT.java) |
+| Concurrent transfers are safe across instances | Both account rows are locked (`SELECT … FOR NO KEY UPDATE`) in ascending id order, and the balance is checked under the lock | [`MultiInstanceConcurrencyIT`](src/test/java/io/github/sanskar121543/payments/cluster/MultiInstanceConcurrencyIT.java): 100 concurrent transfers through nginx over 3 instances. [What breaks without locks](results/phase-2-before-locking.md) (single instance, reproducible from tag `phase-1-concurrency-evidence`) |
+| Losing an instance loses and duplicates nothing | nginx re-sends interrupted POSTs to another instance, which is safe only because of the idempotency keys | [`InstanceFailoverIT`](src/test/java/io/github/sanskar121543/payments/cluster/InstanceFailoverIT.java): SIGKILL one of three instances in the middle of 600 transfers. It asserts from nginx's access log that requests were re-sent; [recorded run](results/phase-3-failover-run.md) |
 | A crash mid-transfer leaves nothing half-written | Every write of a transfer is one database transaction, and Postgres commits only when it receives `COMMIT` | [`TransferCrashIT`](src/test/java/io/github/sanskar121543/payments/cluster/TransferCrashIT.java): the app is SIGKILLed after inserting the transfer, both entries and the outbox row, before committing |
-| An event is never lost after a commit | Transactional outbox, plus a single relay with an advisory lock that keeps events in order | [`OutboxCrashIT`](src/test/java/io/github/sanskar121543/payments/cluster/OutboxCrashIT.java); [crash runs](results/phase-6-crash-runs.md) |
+| An event is never lost after a commit | Transactional outbox; a single relay with an advisory lock that keeps events in order; a consumer that retries until it succeeds and dead-letters only records that can never be processed | [`OutboxCrashIT`](src/test/java/io/github/sanskar121543/payments/cluster/OutboxCrashIT.java), [`ActivityConsumerIT`](src/test/java/io/github/sanskar121543/payments/activity/ActivityConsumerIT.java); [crash runs](results/phase-6-crash-runs.md) |
 | The ledger is append-only | Database triggers reject `UPDATE`/`DELETE`/`TRUNCATE` on entries. Transfers may only move `PENDING → COMPLETED/FAILED` | [`LedgerImmutabilityIT`](src/test/java/io/github/sanskar121543/payments/ledger/LedgerImmutabilityIT.java) |
 | Every cent is traceable | Signed entries per account, and an invariant check: all entries sum to 0, and cached balances equal the ledger | `GET /v1/ledger/invariants`, [`InvariantIT`](src/test/java/io/github/sanskar121543/payments/ledger/InvariantIT.java) |
 
@@ -75,7 +75,7 @@ sequenceDiagram
 You need Docker Desktop (or Docker Engine) with about 8 GB of memory available.
 
 ```bash
-cp .env.example .env                                # local-only demo credentials; change them if you like
+cp .env.example .env                                # local-only demo credentials (or generate your own: scripts/new-api-key.sh)
 docker compose --profile full up -d --build --wait  # postgres, kafka, 3 app instances, nginx, kafbat, prometheus, grafana
 scripts/smoke.sh                                    # end-to-end check through nginx
 ```
@@ -91,11 +91,11 @@ scripts/smoke.sh                                    # end-to-end check through n
 - `--profile lite`: one app instance, no Grafana (daily work).
 - No profile: only Postgres and Kafka, so you can run the app from your IDE with `./mvnw spring-boot:run`.
 
-Ports and memory limits are in `compose.yaml` and `.env.example`. [RUNBOOK.md](RUNBOOK.md) covers day-to-day operation, killing an instance on purpose, and troubleshooting.
+Every port is bound to `127.0.0.1` only: the demo key in `.env.example` is public, so the API must not be reachable from your network. Ports and memory limits are in `compose.yaml` and `.env.example`. [RUNBOOK.md](RUNBOOK.md) covers day-to-day operation, killing an instance on purpose, and troubleshooting.
 
 ### API
 
-All `/v1` endpoints require `X-API-Key`. Every `POST` also requires `Idempotency-Key`.
+Every endpoint except the dashboard's static files and `/actuator/health` requires `X-API-Key` (deny by default). Every `POST` also requires `Idempotency-Key`.
 
 | Method | Path | |
 |---|---|---|
@@ -146,7 +146,7 @@ This run shared the laptop with another busy Docker workload, as the table says.
 
 ## Observability
 
-- **Metrics:** each instance exposes `/actuator/prometheus` with an `app_instance` tag. Prometheus scrapes them on the internal network; nginx returns 404 for `/actuator/*` from outside.
+- **Metrics:** each instance exposes `/actuator/prometheus` with an `app_instance` tag. Prometheus scrapes them on the internal network; from outside, nginx answers 404 for everything under `/actuator` except `/actuator/health`, and 400 for any path containing `;`.
 - **Grafana dashboard:** the provisioned dashboard shows per-instance request rate and p95, ledger writes by result, lock timeouts, DB connections, JVM heap, Kafka consumer lag, rule hits and the outbox backlog.
 - **Logs:** ECS JSON, with the correlation id (from `X-Correlation-Id` or nginx's request id) and the instance id on every line.
 
@@ -192,7 +192,8 @@ Static dashboard: `src/main/resources/static`. Migrations: `src/main/resources/d
 - **The funding account is a hot row.** Every funding transfer queues on its lock.
 - **Idempotency keys expire after 24 h.** A retry after that is treated as a new request.
 - **Rule flags (large amount, velocity) are approximate monitoring.** They do not block transfers.
-- **The live feed shows events about a second late,** so it doesn't skip rows that commit out of id order.
+- **The live feed re-checks the last 500 feed rows every second** to catch rows that commit out of id order. A row that commits even later can be missing from the live view; it is still in `GET /v1/activity`.
+- **Events that can never be processed** (for example unreadable JSON) go to the dead-letter topic `transfer.completed.DLT`. Nothing replays them automatically; inspect them in kafbat-ui.
 - **Defense in depth, not tamper-proofing.** The append-only triggers can be disabled by a database superuser, and the app connects as the database owner.
 - **HTTP only.** There is no TLS locally.
 
