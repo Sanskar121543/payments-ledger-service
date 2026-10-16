@@ -1,6 +1,6 @@
 {
-  "finishedAt": "2026-10-16T14:24:25.685Z",
-  "gitCommit": "9239a91",
+  "finishedAt": "2026-10-16T14:27:24.462Z",
+  "gitCommit": "eefaa5e",
   "hardware": "ASUS ROG Strix G713PV laptop, AMD Ryzen 9 7845HX (12 cores / 24 threads), 15.2 GB RAM, Windows 11 Home, Docker Desktop with WSL2",
   "dockerHost": "24 CPUs, 7905939456 bytes RAM visible to Docker, Docker Desktop, engine 29.8.0",
   "topology": "nginx + app1/app2/app3 (768 MB each) + postgres + kafka, compose profile full",
@@ -12,18 +12,18 @@
     "accounts": 20
   },
   "results": {
-    "transferRequests": 5935,
-    "transfersCompleted": 5935,
+    "transferRequests": 5993,
+    "transfersCompleted": 5993,
     "transfersRefusedInsufficientFunds": 0,
     "unexpectedStatusesIncludingWarmup": 0,
-    "droppedIterations": 66,
+    "droppedIterations": 8,
     "latencyMs": {
-      "avg": 40.66650499915756,
-      "p50": 9.311623,
-      "p90": 60.13707240000003,
-      "p95": 182.45727190000014,
-      "p99": 775.3822372599997,
-      "max": 2198.611532
+      "avg": 35.54386972267638,
+      "p50": 10.52956,
+      "p90": 71.20459440000008,
+      "p95": 203.15890519999982,
+      "p99": 440.06196555999986,
+      "max": 712.319997
     },
     "ledgerInvariantOk": true,
     "moneyConserved": true

@@ -33,6 +33,9 @@ spring:
         max.block.ms: 3000
         request.timeout.ms: 5000
         delivery.timeout.ms: 10000
+        # The relay waits for each acknowledgement in turn (to keep order), so batching delay only
+        # slows it down. Kafka 4 changed the default from 0 to 5 ms per send.
+        linger.ms: 0
     consumer:
       group-id: activity-feed
       auto-offset-reset: earliest
