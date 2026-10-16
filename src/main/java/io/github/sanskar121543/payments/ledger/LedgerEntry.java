@@ -1,5 +1,6 @@
 package io.github.sanskar121543.payments.ledger;
 
+import io.github.sanskar121543.payments.common.DbTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -37,7 +38,7 @@ public class LedgerEntry {
         this.transferId = transferId;
         this.accountId = accountId;
         this.amountCents = amountCents;
-        this.createdAt = Instant.now();
+        this.createdAt = DbTime.now();
     }
 
     public static LedgerEntry debit(long transferId, long accountId, long amountCents) {

@@ -1,5 +1,6 @@
 package io.github.sanskar121543.payments.account;
 
+import io.github.sanskar121543.payments.common.DbTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -41,7 +42,7 @@ public class Account {
         this.name = name;
         this.type = type;
         this.currency = "USD";
-        this.createdAt = Instant.now();
+        this.createdAt = DbTime.now();
     }
 
     public static Account customer(String name) {

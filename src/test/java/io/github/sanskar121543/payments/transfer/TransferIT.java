@@ -44,6 +44,21 @@ class TransferIT {
     }
 
     @Test
+    void createdAtInThe201BodyMatchesTheStoredRows() {
+        long alice = api.fundedAccount("alice", 10_000);
+        long bob = api.createAccount("bob");
+
+        ApiResponse created = api.transfer(alice, bob, 100);
+        ApiResponse stored = api.get("/v1/transfers/" + created.longField("id"));
+
+        assertThat(stored.textField("createdAt")).isEqualTo(created.textField("createdAt"));
+        for (int i = 0; i < 2; i++) {
+            assertThat(stored.body().get("entries").get(i).get("createdAt"))
+                    .isEqualTo(created.body().get("entries").get(i).get("createdAt"));
+        }
+    }
+
+    @Test
     void insufficientFundsIsRecordedAsFailedWithNoEntries() {
         long alice = api.fundedAccount("alice", 1_000);
         long bob = api.createAccount("bob");

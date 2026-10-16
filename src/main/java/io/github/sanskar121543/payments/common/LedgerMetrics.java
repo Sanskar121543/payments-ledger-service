@@ -22,6 +22,7 @@ public class LedgerMetrics {
         for (String rule : new String[] {"large_amount", "high_velocity"}) {
             registry.counter("ledger.rules.hits", "rule", rule);
         }
+        registry.counter("ledger.database.unavailable");
     }
 
     public void write(String operation, StoredResponse response) {
@@ -41,6 +42,10 @@ public class LedgerMetrics {
 
     public void lockTimeout(String scope) {
         registry.counter("ledger.lock.timeouts", "scope", scope).increment();
+    }
+
+    public void databaseUnavailable() {
+        registry.counter("ledger.database.unavailable").increment();
     }
 
     public void ruleHit(String rule) {

@@ -86,6 +86,7 @@ docker compose --profile full down    # integration tests start their own contai
 | `409 idempotency-key-reused` | The same Idempotency-Key was sent with a different body or path. Use a new key per distinct request |
 | `409 idempotency-key-in-use` + `Retry-After: 1` | The original request with that key is still running. Retry with the same key |
 | `503 lock-timeout` + `Retry-After: 1` | An account stayed locked for more than 2 s. Retry with the same key; nothing was written |
+| `503 database-unavailable` + `Retry-After: 1` | No database connection within 5 s: the pool is exhausted or Postgres is down. Retry with the same key. If it persists, check `docker compose ps postgres` and the "DB connections in use" panel in Grafana |
 | Dashboard shows "API key rejected" | Paste `DEMO_API_KEY` from `.env`. The server checks it against `API_KEY_HASHES` |
 | Grafana is slow to load right after start | It needs about 30 s and close to its 512 MB limit while it builds its search index |
 | `429 demo-busy` | A demo is already running on that instance. Wait for it to finish |

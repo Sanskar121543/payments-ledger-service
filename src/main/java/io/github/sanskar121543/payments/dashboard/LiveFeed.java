@@ -43,7 +43,7 @@ public class LiveFeed {
     }
 
     public SseEmitter subscribe(Long lastEventId) {
-        SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+        SseEmitter emitter = newEmitter();
         long resumeFloor = Math.max(0, activity.latestId() - BACKLOG);
         // Clamped: an old or forged Last-Event-ID must not make this instance replay the whole table.
         long floor = lastEventId == null ? resumeFloor : Math.max(lastEventId, resumeFloor);
@@ -56,7 +56,11 @@ public class LiveFeed {
         return emitter;
     }
 
-    // Runs on the scheduler thread but never writes to a socket: it only fills each subscriber's queue.
+    SseEmitter newEmitter() {
+        return new SseEmitter(EMITTER_TIMEOUT_MILLIS);
+    }
+
+    // Runs on the scheduler thread but never touches a socket: it only fills each subscriber's queue.
     @Scheduled(fixedDelay = 1000)
     void push() {
         if (subscribers.isEmpty()) {
@@ -103,6 +107,7 @@ public class LiveFeed {
         });
         final BlockingQueue<SseEmitter.SseEventBuilder> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
         final Thread sender;
+        volatile boolean overflowed;
 
         Subscriber(SseEmitter emitter, long floor) {
             this.emitter = emitter;
@@ -115,8 +120,10 @@ public class LiveFeed {
 
         void offer(SseEmitter.SseEventBuilder event) {
             if (!queue.offer(event)) {
-                // Too far behind: end the stream; the browser reconnects with Last-Event-ID.
-                emitter.complete();
+                // Too far behind: end the stream; the browser reconnects with Last-Event-ID. The sender
+                // thread completes the emitter, because complete() waits for the write in progress, and
+                // that write is exactly what is stuck.
+                overflowed = true;
                 close();
             }
         }
@@ -127,9 +134,13 @@ public class LiveFeed {
                     emitter.send(queue.take());
                 }
             } catch (InterruptedException closed) {
-                Thread.currentThread().interrupt();
+                // Ended by close(); completed below if it overflowed.
             } catch (IOException | IllegalStateException disconnected) {
                 close();
+                return;
+            }
+            if (overflowed) {
+                emitter.complete();
             }
         }
 

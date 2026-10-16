@@ -69,6 +69,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
 - **Why `FOR NO KEY UPDATE` rather than `FOR UPDATE`:** it still excludes other writers. Unlike `FOR UPDATE`, it lets other transactions' foreign-key checks on the account through.
 - **Safety nets** (all set per connection, not server-wide, so a test's own session is unaffected):
   - **`lock_timeout = 2s`:** an account-lock timeout returns `503 + Retry-After`.
+  - **Pool exhausted or database unreachable:** no connection within Hikari's 5 s `connection-timeout` (for example, every connection waiting on a hot row) also returns `503 database-unavailable + Retry-After`, not a generic 500. A retry with the same key is safe, even if the failure hit a commit.
   - **`idle_in_transaction_session_timeout = 10s`.**
   - **On the server, `client_connection_check_interval = 1s`:** Postgres notices a killed instance quickly and releases its locks.
 
@@ -192,7 +193,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   - Each instance tails the shared `activity_feed` table every second and pushes new rows over SSE.
   - Ids are assigned at insert but become visible at commit, so a row with a smaller id can appear later. So every tick re-reads the 500 rows behind the newest one sent, and each subscriber remembers the last 2,000 ids it was sent. That fills such gaps without duplicates.
   - Reconnects resume with `Last-Event-ID`, **clamped** to the last 25 rows. An earlier version trusted any value, so one client sending `Last-Event-ID: 0` held back every other dashboard on that instance (code review fix).
-  - Each subscriber has its own virtual thread and a bounded queue for socket writes. A browser that stops reading stalls only its own stream; if its queue fills, its stream is closed so it reconnects.
+  - Each subscriber has its own virtual thread and a bounded queue for socket writes. A browser that stops reading stalls only its own stream; if its queue fills, its stream is closed so it reconnects. The closing happens on that subscriber's thread, because `complete()` waits for the write that is stuck.
   - The browser reads the stream with `fetch()` plus a small parser, because `EventSource` cannot send the `X-API-Key` header.
   - A heartbeat every 15 s keeps nginx and the browser from closing an idle connection.
 - **Alternatives:**
@@ -285,6 +286,9 @@ A multi-agent review of the finished code produced these findings. Each was chec
 | Demo runs had no concurrency limit | One run per instance (429 `demo-busy`); demos are off unless enabled (compose enables them) |
 | The failover test didn't check nginx's re-send; `smoke.sh` didn't check that 3 instances answered | Both assert it now |
 | The before-locking evidence named a test that wasn't on the tag it cited | Tag `phase-1-concurrency-evidence` has phase-1 code plus that exact test, and the evidence was re-run there |
+| The 201 body (and its stored replay) showed `createdAt` in nanoseconds; a GET of the same row showed microseconds | Entities take their timestamps at Postgres's precision (`DbTime`); a test compares the two |
+| A pool timeout or lost database connection returned a generic 500 | `503 database-unavailable` + `Retry-After`, counted in `ledger_database_unavailable_total` (§6) |
+| When a stalled browser's queue overflowed, closing its stream still blocked the scheduler thread | The subscriber's own thread completes the stream; a unit test reproduces the stall (§15) |
 
 ## 22. Who wrote the core logic (default D5)
 

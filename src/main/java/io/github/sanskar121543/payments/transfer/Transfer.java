@@ -1,5 +1,6 @@
 package io.github.sanskar121543.payments.transfer;
 
+import io.github.sanskar121543.payments.common.DbTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -65,7 +66,7 @@ public class Transfer {
         this.reversesTransferId = reversesTransferId;
         this.servedBy = servedBy;
         this.correlationId = correlationId;
-        this.createdAt = Instant.now();
+        this.createdAt = DbTime.now();
     }
 
     public static Transfer pending(long fromAccountId, long toAccountId, long amountCents, String servedBy,

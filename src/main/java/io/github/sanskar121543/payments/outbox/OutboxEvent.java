@@ -1,5 +1,6 @@
 package io.github.sanskar121543.payments.outbox;
 
+import io.github.sanskar121543.payments.common.DbTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -47,7 +48,7 @@ public class OutboxEvent {
         this.messageKey = messageKey;
         this.payload = payload;
         this.correlationId = correlationId;
-        this.createdAt = Instant.now();
+        this.createdAt = DbTime.now();
     }
 
     public void markPublished(Instant at) {

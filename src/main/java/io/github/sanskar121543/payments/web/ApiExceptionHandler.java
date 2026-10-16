@@ -8,13 +8,16 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -60,6 +63,19 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .header(HttpHeaders.RETRY_AFTER, "1")
                 .body(Problems.of(HttpStatus.SERVICE_UNAVAILABLE, "lock-timeout", "Account busy",
                         "Another transfer is holding this account; retry with the same Idempotency-Key."));
+    }
+
+    // No connection within Hikari's connection-timeout, or the database is unreachable. If the failure hit
+    // a commit, the outcome is unknown to us; a retry with the same Idempotency-Key is right either way.
+    @ExceptionHandler({CannotCreateTransactionException.class, DataAccessResourceFailureException.class,
+            TransientDataAccessResourceException.class})
+    ResponseEntity<ProblemDetail> databaseUnavailable(Exception e) {
+        log.warn("Database unavailable: {}", e.getMessage());
+        metrics.databaseUnavailable();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(Problems.of(HttpStatus.SERVICE_UNAVAILABLE, "database-unavailable", "Database unavailable",
+                        "The database could not be reached in time; retry with the same Idempotency-Key."));
     }
 
     @ExceptionHandler(Exception.class)
