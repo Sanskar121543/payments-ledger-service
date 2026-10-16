@@ -176,6 +176,30 @@ services:
     depends_on:
       - prometheus
 
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [load]
+    user: "${HOST_UID:-12345}:${HOST_GID:-12345}"
+    command: ["run", "/scripts/transfers.js"]
+    environment:
+      BASE_URL: http://nginx
+      API_KEY: ${DEMO_API_KEY:-}
+      RATE: ${RATE:-200}
+      DURATION: ${DURATION:-60s}
+      HARDWARE_NOTE: ${HARDWARE_NOTE:-}
+      DOCKER_INFO: ${DOCKER_INFO:-}
+      TOPOLOGY: ${TOPOLOGY:-}
+      OTHER_LOAD: ${OTHER_LOAD:-}
+      GIT_SHA: ${GIT_SHA:-}
+    volumes:
+      - ./load:/scripts:ro
+      - ./results/k6:/results
+    mem_limit: 512m
+    memswap_limit: 512m
+    depends_on:
+      nginx:
+        condition: service_started
+
 volumes:
   pgdata:
   kafkadata:
