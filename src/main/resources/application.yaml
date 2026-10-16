@@ -24,6 +24,20 @@ spring:
     deserialization:
       accept-float-as-int: false
       fail-on-unknown-properties: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    producer:
+      properties:
+        # If Kafka is unreachable, give up after 3s instead of the default 60s, so a request thread
+        # (phase 4) or the outbox relay's open transaction (phase 6) is never stuck for a minute.
+        max.block.ms: 3000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      group-id: activity-feed
+      auto-offset-reset: earliest
+    listener:
+      concurrency: 1
   task:
     scheduling:
       pool:
@@ -56,3 +70,9 @@ payments:
   idempotency:
     retention: 24h
     purge-interval: 1h
+  kafka:
+    topic: transfer.completed
+    partitions: 6
+  rules:
+    large-amount-cents: 100000
+    velocity-max-per-minute: 5

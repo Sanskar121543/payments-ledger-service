@@ -3,17 +3,21 @@ package io.github.sanskar121543.payments.transfer;
 import io.github.sanskar121543.payments.account.Account;
 import io.github.sanskar121543.payments.account.AccountRepository;
 import io.github.sanskar121543.payments.common.InstanceInfo;
+import io.github.sanskar121543.payments.events.TransferCompletedEvent;
 import io.github.sanskar121543.payments.idempotency.IdempotencyService;
 import io.github.sanskar121543.payments.idempotency.RequestFingerprint;
 import io.github.sanskar121543.payments.idempotency.StoredResponse;
 import io.github.sanskar121543.payments.ledger.LedgerEntry;
 import io.github.sanskar121543.payments.ledger.LedgerEntryRepository;
 import io.github.sanskar121543.payments.web.CorrelationIdFilter;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.MDC;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +30,18 @@ public class TransferService {
     private final IdempotencyService idempotency;
     private final TransferResponses responses;
     private final InstanceInfo instance;
+    private final ApplicationEventPublisher events;
 
     TransferService(AccountRepository accounts, TransferRepository transfers, LedgerEntryRepository entries,
-            IdempotencyService idempotency, TransferResponses responses, InstanceInfo instance) {
+            IdempotencyService idempotency, TransferResponses responses, InstanceInfo instance,
+            ApplicationEventPublisher events) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.entries = entries;
         this.idempotency = idempotency;
         this.responses = responses;
         this.instance = instance;
+        this.events = events;
     }
 
     @Transactional
@@ -92,7 +99,15 @@ public class TransferService {
         from.debit(amount);
         to.credit(amount);
         transfer.complete();
+        // Delivered to AfterCommitPublisher only if this transaction commits.
+        events.publishEvent(completedEvent(transfer));
         return responses.created(transfer, List.of(debit, credit));
+    }
+
+    private static TransferCompletedEvent completedEvent(Transfer transfer) {
+        return new TransferCompletedEvent(UUID.randomUUID(), transfer.getId(), transfer.getKind().name(),
+                transfer.getFromAccountId(), transfer.getToAccountId(), transfer.getAmountCents(),
+                transfer.getServedBy(), transfer.getCorrelationId(), Instant.now());
     }
 
     /**

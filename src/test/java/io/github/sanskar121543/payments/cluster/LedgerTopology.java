@@ -17,6 +17,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.lifecycle.Startable;
 import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -24,8 +25,8 @@ import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 
 /**
- * The compose topology rebuilt in code: Postgres, N app containers running the jar Maven just built,
- * and optionally nginx with the repo's real nginx.conf. Tests talk to it like any outside client.
+ * The compose topology rebuilt in code: Postgres, Kafka, N app containers running the jar Maven just
+ * built, and optionally nginx with the repo's real nginx.conf. Tests talk to it like any outside client.
  */
 public final class LedgerTopology implements AutoCloseable {
 
@@ -42,6 +43,7 @@ public final class LedgerTopology implements AutoCloseable {
 
     private final Network network = Network.newNetwork();
     private final PostgreSQLContainer postgres;
+    private final KafkaContainer kafka;
     private final Map<String, GenericContainer<?>> apps = new LinkedHashMap<>();
     private final List<GenericContainer<?>> extraApps = new ArrayList<>();
     private GenericContainer<?> nginx;
@@ -54,6 +56,11 @@ public final class LedgerTopology implements AutoCloseable {
                         "-c", "client_connection_check_interval=1s",
                         "-c", "tcp_keepalives_idle=30", "-c", "tcp_keepalives_interval=10",
                         "-c", "tcp_keepalives_count=3");
+        kafka = new KafkaContainer(DockerImageName.parse("apache/kafka:4.3.1"))
+                .withNetwork(network)
+                .withNetworkAliases("kafka")
+                .withListener("kafka:19092")
+                .withEnv("KAFKA_HEAP_OPTS", "-Xms256m -Xmx256m");
     }
 
     public static LedgerTopology start(List<String> appNames, boolean withNginx) {
@@ -62,7 +69,7 @@ public final class LedgerTopology implements AutoCloseable {
 
     public static LedgerTopology start(List<String> appNames, boolean withNginx, Map<String, String> extraEnv) {
         LedgerTopology topology = new LedgerTopology();
-        topology.postgres.start();
+        Startables.deepStart(topology.postgres, topology.kafka).join();
         for (String name : appNames) {
             topology.apps.put(name, topology.newApp(name, extraEnv));
         }
@@ -109,6 +116,19 @@ public final class LedgerTopology implements AutoCloseable {
                 postgres.getUsername(), postgres.getPassword()));
     }
 
+    public String kafkaBootstrapServers() {
+        return kafka.getBootstrapServers();
+    }
+
+    /** Freezes the broker (docker pause): connections stay open but nothing is answered. */
+    public void pauseKafka() {
+        DockerClientFactory.instance().client().pauseContainerCmd(kafka.getContainerId()).exec();
+    }
+
+    public void unpauseKafka() {
+        DockerClientFactory.instance().client().unpauseContainerCmd(kafka.getContainerId()).exec();
+    }
+
     public String jdbcUrl() {
         return postgres.getJdbcUrl();
     }
@@ -130,6 +150,7 @@ public final class LedgerTopology implements AutoCloseable {
     public void close() {
         Stream.concat(Stream.concat(Stream.ofNullable(nginx), extraApps.stream()), apps.values().stream())
                 .forEach(Startable::stop);
+        kafka.stop();
         postgres.stop();
         network.close();
     }
@@ -143,6 +164,9 @@ public final class LedgerTopology implements AutoCloseable {
                 .withEnv("DB_USER", postgres.getUsername())
                 .withEnv("DB_PASSWORD", postgres.getPassword())
                 .withEnv("API_KEY_HASHES", "test:" + TEST_KEY_HASH)
+                .withEnv("SPRING_KAFKA_BOOTSTRAP_SERVERS", "kafka:19092")
+                // A killed consumer's partitions move to a live instance after 10s instead of 45s.
+                .withEnv("SPRING_KAFKA_CONSUMER_PROPERTIES_SESSION_TIMEOUT_MS", "10000")
                 .withEnv("JAVA_OPTS", "-Xms256m -Xmx256m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError")
                 .withEnv(extraEnv)
                 .withExposedPorts(8080)
@@ -151,7 +175,7 @@ public final class LedgerTopology implements AutoCloseable {
                         .withMemorySwap(APP_MEMORY_BYTES))
                 .waitingFor(Wait.forHttp("/actuator/health/readiness").forStatusCode(200)
                         .withStartupTimeout(Duration.ofMinutes(2)));
-        app.dependsOn(postgres);
+        app.dependsOn(postgres, kafka);
         return app;
     }
 
