@@ -91,7 +91,8 @@ export function transfer(data) {
     toAccount: data.accounts[to],
     amountCents: 100 + Math.floor(Math.random() * 20_000),
   });
-  const key = `${data.run}-${exec.scenario.iterationInTest}`;
+  // iterationInTest restarts at 0 in every scenario, so the scenario name keeps keys unique.
+  const key = `${data.run}-${exec.scenario.name}-${exec.scenario.iterationInTest}`;
   const response = http.post(`${BASE_URL}/v1/transfers`, body, {
     headers: headers(key),
     responseCallback: http.expectedStatuses(201, 422),
