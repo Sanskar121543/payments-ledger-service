@@ -1,0 +1,10 @@
+payments:
+  instance-id: test
+  security:
+    # SHA-256 of "test-key" and "other-key"; test-only keys, not secrets.
+    api-keys: "test:62af8704764faf8ea82fc61ce9c4c3908b6cb97d463a634e9e587d7c885db0ef,other:580843d03d2216ff1a275d0991bad66e4d1af871171d929e9de604b7959f9bca"
+
+logging:
+  level:
+    root: WARN
+    io.github.sanskar121543: INFO
