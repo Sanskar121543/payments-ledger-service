@@ -49,29 +49,20 @@ public class OutboxRelay {
     }
 
     /**
-     * One relay at a time across all instances (advisory lock), oldest row first, and the batch stops at
-     * the first record Kafka does not acknowledge, so a later event never overtakes an earlier one.
+     * TODO(practice) rules:
+     * - One relay at a time across all instances: jobLock.tryAcquire(SingletonJobLock.OUTBOX_RELAY), else return 0.
+     * - Up to batchSize unpublished rows, oldest first (repository.findByPublishedAtIsNullOrderByIdAsc).
+     * - send(event) them in order and stop at the first one Kafka does not acknowledge, so a later event never
+     *   overtakes an earlier one.
+     * - Mark each acknowledged row published and flush it at once, not at commit. Why? Look up
+     *   idle_in_transaction_session_timeout in application.yaml.
+     * - Stop starting new sends once maxBatchDuration has passed.
+     * - Return how many rows were published.
      */
     @Scheduled(fixedDelayString = "${payments.outbox.poll-interval}")
     @Transactional
     public int relayBatch() {
-        if (!jobLock.tryAcquire(SingletonJobLock.OUTBOX_RELAY)) {
-            return 0;
-        }
-        List<OutboxEvent> batch = repository.findByPublishedAtIsNullOrderByIdAsc(Limit.of(batchSize));
-        long deadline = System.nanoTime() + maxBatchDuration.toNanos();
-        int published = 0;
-        for (OutboxEvent event : batch) {
-            if (System.nanoTime() > deadline || !send(event)) {
-                break;
-            }
-            event.markPublished(Instant.now());
-            // Write published_at now rather than at commit: the statement keeps this transaction from
-            // sitting idle, which Postgres ends after idle_in_transaction_session_timeout (10s).
-            repository.flush();
-            published++;
-        }
-        return published;
+        throw new UnsupportedOperationException("practice: write OutboxRelay.relayBatch");
     }
 
     private boolean send(OutboxEvent event) {

@@ -14,22 +14,12 @@ public final class RequestFingerprint {
     /**
      * SHA-256 over the validated request, not the raw body, so whitespace and field order do not
      * change the hash.
+     *
+     * TODO(practice): hash the method, the path and every field, and return lowercase hex. The encoding must be
+     * unambiguous: ("ab", "c") and ("a", "bc") must give different hashes.
      */
     public static String of(String method, String path, Object... fields) {
-        MessageDigest sha256 = newDigest();
-        update(sha256, method);
-        update(sha256, path);
-        for (Object field : fields) {
-            update(sha256, String.valueOf(field));
-        }
-        return HexFormat.of().formatHex(sha256.digest());
-    }
-
-    // Length-prefixing every part keeps the encoding unambiguous: ("ab", "c") and ("a", "bc") differ.
-    private static void update(MessageDigest digest, String part) {
-        byte[] bytes = part.getBytes(StandardCharsets.UTF_8);
-        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
-        digest.update(bytes);
+        throw new UnsupportedOperationException("practice: write RequestFingerprint.of");
     }
 
     private static MessageDigest newDigest() {

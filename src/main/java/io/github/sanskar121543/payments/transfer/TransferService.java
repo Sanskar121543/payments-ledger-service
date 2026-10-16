@@ -44,64 +44,41 @@ public class TransferService {
         this.outbox = outbox;
     }
 
+    /**
+     * Moves money between two accounts, at most once per Idempotency-Key.
+     *
+     * TODO(practice) rules:
+     * - One transaction for everything: the idempotency key, the transfer row, both ledger entries, both
+     *   balances and the outbox event commit or roll back together.
+     * - Fingerprint the validated request with RequestFingerprint.of("POST", "/v1/transfers", from, to, amount)
+     *   and do the work inside idempotency.execute(...).
+     * - Lock both account rows with accounts.findByIdForUpdate BEFORE reading a balance, in the order lockOrder
+     *   gives. A missing account is responses.accountNotFound(id).
+     * - Save Transfer.pending(...) (servedBy = instance.id(), correlation id = MDC.get(CorrelationIdFilter.MDC_KEY)).
+     * - Not enough money: transfer.fail(Transfer.INSUFFICIENT_FUNDS), return responses.insufficientFunds(transfer).
+     *   Return it, do not throw: a rollback would erase the FAILED record.
+     * - Otherwise: save LedgerEntry.debit and LedgerEntry.credit, update both balances, transfer.complete(),
+     *   outbox.write(completedEvent(transfer)), return responses.created(transfer, List.of(debit, credit)).
+     */
     @Transactional
     public StoredResponse transfer(String clientId, String idempotencyKey, TransferRequest request) {
-        String fingerprint = RequestFingerprint.of("POST", "/v1/transfers",
-                request.fromAccount(), request.toAccount(), request.amountCents());
-        return idempotency.execute(clientId, idempotencyKey, fingerprint, () -> moveMoney(request));
+        throw new UnsupportedOperationException("practice: write TransferService.transfer");
     }
 
+    /**
+     * Sends the money of a COMPLETED transfer back, at most once.
+     *
+     * TODO(practice) rules:
+     * - Same idempotency wrapping as transfer; fingerprint ("POST", "/v1/transfers/" + transferId + "/reversals").
+     * - Unknown id: responses.transferNotFound(id). Not reversible: responses.notReversible(original).
+     * - Lock the two accounts in the same global order as a transfer does.
+     * - Only once you hold the locks, check transfers.existsByReversesTransferIdAndStatus(id, COMPLETED) and
+     *   return responses.alreadyReversed(original) if so. Why only then? Think of two reversals arriving together.
+     * - Save Transfer.pendingReversal(original, ...) and settle it exactly like a transfer (to -> from).
+     */
     @Transactional
     public StoredResponse reverse(String clientId, String idempotencyKey, long transferId) {
-        String fingerprint = RequestFingerprint.of("POST", "/v1/transfers/" + transferId + "/reversals");
-        return idempotency.execute(clientId, idempotencyKey, fingerprint, () -> reverseTransfer(transferId));
-    }
-
-    private StoredResponse moveMoney(TransferRequest request) {
-        LockedAccounts locked = lockInOrder(request.fromAccount(), request.toAccount());
-        if (locked.missingAccountId() != null) {
-            return responses.accountNotFound(locked.missingAccountId());
-        }
-        Transfer transfer = transfers.save(Transfer.pending(request.fromAccount(), request.toAccount(),
-                request.amountCents(), instance.id(), MDC.get(CorrelationIdFilter.MDC_KEY)));
-        return settle(transfer, locked.from(), locked.to());
-    }
-
-    private StoredResponse reverseTransfer(long originalId) {
-        Optional<Transfer> found = transfers.findById(originalId);
-        if (found.isEmpty()) {
-            return responses.transferNotFound(originalId);
-        }
-        Transfer original = found.get();
-        if (!original.isReversible()) {
-            return responses.notReversible(original);
-        }
-        LockedAccounts locked = lockInOrder(original.getToAccountId(), original.getFromAccountId());
-        // Checked only after locking: a concurrent reversal of the same transfer must wait for these locks,
-        // so by the time we get them, its COMPLETED row is committed and visible here.
-        if (transfers.existsByReversesTransferIdAndStatus(originalId, TransferStatus.COMPLETED)) {
-            return responses.alreadyReversed(original);
-        }
-        Transfer reversal = transfers.save(
-                Transfer.pendingReversal(original, instance.id(), MDC.get(CorrelationIdFilter.MDC_KEY)));
-        return settle(reversal, locked.from(), locked.to());
-    }
-
-    private StoredResponse settle(Transfer transfer, Account from, Account to) {
-        long amount = transfer.getAmountCents();
-        // A failed transfer is returned, not thrown: throwing would roll back and erase the FAILED record.
-        if (!from.canDebit(amount)) {
-            transfer.fail(Transfer.INSUFFICIENT_FUNDS);
-            return responses.insufficientFunds(transfer);
-        }
-        LedgerEntry debit = entries.save(LedgerEntry.debit(transfer.getId(), from.getId(), amount));
-        LedgerEntry credit = entries.save(LedgerEntry.credit(transfer.getId(), to.getId(), amount));
-        from.debit(amount);
-        to.credit(amount);
-        transfer.complete();
-        // Same transaction as the entries: the event exists if and only if the money moved.
-        outbox.write(completedEvent(transfer));
-        return responses.created(transfer, List.of(debit, credit));
+        throw new UnsupportedOperationException("practice: write TransferService.reverse");
     }
 
     private static TransferCompletedEvent completedEvent(Transfer transfer) {
@@ -111,25 +88,10 @@ public class TransferService {
     }
 
     /**
-     * Locks both account rows (SELECT ... FOR NO KEY UPDATE) smallest id first. Because every transfer
-     * uses the same order, two transfers can never each hold one row while waiting for the other.
+     * TODO(practice): the two account ids in the order every transaction must lock them, so that two transfers
+     * can never each hold one row while waiting for the other. LockOrderTest checks it.
      */
-    private LockedAccounts lockInOrder(long fromId, long toId) {
-        Map<Long, Account> locked = new HashMap<>();
-        for (long id : lockOrder(fromId, toId)) {
-            Optional<Account> account = accounts.findByIdForUpdate(id);
-            if (account.isEmpty()) {
-                return new LockedAccounts(null, null, id);
-            }
-            locked.put(id, account.get());
-        }
-        return new LockedAccounts(locked.get(fromId), locked.get(toId), null);
-    }
-
     static long[] lockOrder(long first, long second) {
-        return first < second ? new long[] {first, second} : new long[] {second, first};
-    }
-
-    private record LockedAccounts(Account from, Account to, Long missingAccountId) {
+        throw new UnsupportedOperationException("practice: write TransferService.lockOrder");
     }
 }

@@ -34,42 +34,27 @@ public class IdempotencyService {
     /**
      * Runs {@code work} at most once per (client, key). MANDATORY means this must join the caller's
      * transaction, so the key, the response and the ledger writes commit or roll back together.
+     *
+     * TODO(practice): switch on claim(...).
+     * - Replay: the stored response, marked as a replay (asReplay()).
+     * - Mismatch: a 409 problem of type "idempotency-key-reused", built with responses.problem(Problems.of(...)).
+     * - Acquired: run work, store its response on the record (complete), return it.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public StoredResponse execute(String clientId, String key, String requestHash, Supplier<StoredResponse> work) {
-        return switch (claim(clientId, key, requestHash)) {
-            case Replay replay -> replay.response().asReplay();
-            case Mismatch mismatch -> responses.problem(Problems.of(HttpStatus.CONFLICT, "idempotency-key-reused",
-                    "Idempotency-Key reused with a different request",
-                    "Key '" + key + "' was first used with a different request body or endpoint."));
-            case Acquired acquired -> {
-                StoredResponse response = work.get();
-                acquired.record().complete(response);
-                yield response;
-            }
-        };
+        throw new UnsupportedOperationException("practice: write IdempotencyService.execute");
     }
 
+    /**
+     * TODO(practice) rules:
+     * - Insert the key with repository.insertIfAbsent (INSERT ... ON CONFLICT DO NOTHING). If another open
+     *   transaction is inserting the same key, this insert waits for it. When lock_timeout ends that wait,
+     *   you get a PessimisticLockingFailureException: throw IdempotencyKeyInUseException(key).
+     * - Then load the row. Inserted by us: Acquired. Different requestHash: Mismatch. Not completed yet:
+     *   IdempotencyKeyInUseException. Completed: Replay of its stored response.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public Claim claim(String clientId, String key, String requestHash) {
-        int inserted;
-        try {
-            inserted = repository.insertIfAbsent(clientId, key, requestHash);
-        } catch (PessimisticLockingFailureException e) {
-            // We waited lock_timeout for another transaction that holds this key and it has not finished.
-            throw new IdempotencyKeyInUseException(key);
-        }
-        IdempotencyRecord record = repository.findByClientIdAndIdemKey(clientId, key)
-                .orElseThrow(() -> new IllegalStateException("Idempotency key vanished after insert"));
-        if (inserted == 1) {
-            return new Acquired(record);
-        }
-        if (!record.getRequestHash().equals(requestHash)) {
-            return new Mismatch();
-        }
-        if (!record.isCompleted()) {
-            throw new IdempotencyKeyInUseException(key);
-        }
-        return new Replay(record.storedResponse());
+        throw new UnsupportedOperationException("practice: write IdempotencyService.claim");
     }
 }
