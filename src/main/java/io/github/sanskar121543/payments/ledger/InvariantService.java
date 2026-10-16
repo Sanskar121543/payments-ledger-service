@@ -36,7 +36,8 @@ public class InvariantService {
         return InvariantReport.of(sum, mismatches, unbalanced, negative,
                 count("SELECT COUNT(*) FROM accounts"),
                 count("SELECT COUNT(*) FROM transfers"),
-                count("SELECT COUNT(*) FROM ledger_entries"));
+                count("SELECT COUNT(*) FROM ledger_entries"),
+                count("SELECT COUNT(*) FROM outbox_events WHERE published_at IS NULL"));
     }
 
     private long count(String sql) {

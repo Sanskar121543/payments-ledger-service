@@ -9,6 +9,7 @@ import io.github.sanskar121543.payments.idempotency.RequestFingerprint;
 import io.github.sanskar121543.payments.idempotency.StoredResponse;
 import io.github.sanskar121543.payments.ledger.LedgerEntry;
 import io.github.sanskar121543.payments.ledger.LedgerEntryRepository;
+import io.github.sanskar121543.payments.outbox.OutboxWriter;
 import io.github.sanskar121543.payments.web.CorrelationIdFilter;
 import java.time.Instant;
 import java.util.HashMap;
@@ -17,7 +18,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.MDC;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,18 +30,18 @@ public class TransferService {
     private final IdempotencyService idempotency;
     private final TransferResponses responses;
     private final InstanceInfo instance;
-    private final ApplicationEventPublisher events;
+    private final OutboxWriter outbox;
 
     TransferService(AccountRepository accounts, TransferRepository transfers, LedgerEntryRepository entries,
             IdempotencyService idempotency, TransferResponses responses, InstanceInfo instance,
-            ApplicationEventPublisher events) {
+            OutboxWriter outbox) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.entries = entries;
         this.idempotency = idempotency;
         this.responses = responses;
         this.instance = instance;
-        this.events = events;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -99,8 +99,8 @@ public class TransferService {
         from.debit(amount);
         to.credit(amount);
         transfer.complete();
-        // Delivered to AfterCommitPublisher only if this transaction commits.
-        events.publishEvent(completedEvent(transfer));
+        // Same transaction as the entries: the event exists if and only if the money moved.
+        outbox.write(completedEvent(transfer));
         return responses.created(transfer, List.of(debit, credit));
     }
 

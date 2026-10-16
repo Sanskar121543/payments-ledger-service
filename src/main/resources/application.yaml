@@ -28,8 +28,8 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
     producer:
       properties:
-        # If Kafka is unreachable, give up after 3s instead of the default 60s, so a request thread
-        # (phase 4) or the outbox relay's open transaction (phase 6) is never stuck for a minute.
+        # If Kafka is unreachable, give up after 3s instead of the default 60s, so the outbox relay
+        # never holds its database transaction open for a minute.
         max.block.ms: 3000
         request.timeout.ms: 5000
         delivery.timeout.ms: 10000
@@ -87,6 +87,10 @@ payments:
   kafka:
     topic: transfer.completed
     partitions: 6
+  outbox:
+    poll-interval: 250ms
+    batch-size: 100
+    send-timeout: 5s
   rules:
     large-amount-cents: 100000
     velocity-max-per-minute: 5

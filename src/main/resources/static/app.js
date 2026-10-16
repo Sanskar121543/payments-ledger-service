@@ -79,6 +79,7 @@ function renderInvariants(report) {
   $('inv-mismatch').textContent = report.accountsWithCachedBalanceMismatch;
   $('inv-unbalanced').textContent = report.transfersWithUnbalancedEntries;
   $('inv-negative').textContent = report.customerAccountsBelowZero;
+  $('inv-outbox').textContent = report.outboxUnpublished;
   $('stat-accounts').textContent = report.accounts.toLocaleString('en-US');
   $('stat-transfers').textContent = report.transfers.toLocaleString('en-US');
   $('stat-entries').textContent = report.entries.toLocaleString('en-US');
