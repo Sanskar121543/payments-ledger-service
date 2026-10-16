@@ -137,7 +137,7 @@ input {
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
 .hero { grid-column: span 4; }
-.stats { grid-column: span 8; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-content: center; }
+.stats { grid-column: span 8; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; align-content: center; }
 .balances { grid-column: span 7; }
 .feed { grid-column: span 5; grid-row: span 2; display: flex; flex-direction: column; }
 .demo { grid-column: span 7; }
@@ -154,7 +154,7 @@ input {
 .mini-stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .stat { display: flex; flex-direction: column; gap: 4px; }
-.stat strong { font-size: 24px; font-weight: 600; }
+.stat strong { font-size: 28px; font-weight: 600; }
 
 .chart-box { position: relative; height: 300px; margin-top: 8px; }
 .chart-box.small { height: 220px; }

@@ -63,18 +63,27 @@ flowchart LR
 
 | Service | Profile | Memory limit | JVM / settings |
 |---|---|---|---|
-| postgres | always | 512 MB | `shared_buffers=128MB`, `max_connections=60` |
-| kafka | always | 1 GB | `KAFKA_HEAP_OPTS=-Xms512m -Xmx512m` |
-| app1 | lite, full | 768 MB | `-Xms384m -Xmx384m`, metaspace/code-cache/direct-memory caps |
+| postgres | always | 768 MB | `shared_buffers=192MB`, `max_connections=60` |
+| kafka | always | 768 MB | `KAFKA_HEAP_OPTS=-Xms384m -Xmx384m` |
+| app1 | lite, full | 768 MB | `-Xms320m -Xmx320m`, G1, metaspace/code-cache/direct-memory caps |
 | app2, app3 | full | 768 MB each | same |
 | nginx | lite, full | 64 MB | — |
 | kafbat-ui | lite, full | 512 MB | `-Xmx256m` |
-| prometheus | lite, full | 384 MB | 2-day retention |
-| grafana | full | 384 MB | — |
+| prometheus | lite, full | 256 MB | 2-day retention |
+| grafana | full | 512 MB | — |
 | k6 | load | 512 MB | — |
-| **Total** | | **lite ≈ 3.2 GB, full ≈ 5.1 GB** (+0.5 GB during the load test) | Limits, not usage. Real usage is measured and committed under `results/`. |
+| **Total** | | **lite ≈ 3.1 GB, full ≈ 5.2 GB** (+0.5 GB during the load test) | Limits, not usage. Real usage is measured and committed under `results/k6/*-docker-stats.txt`. |
 
 **Rule:** integration tests start their own containers, so stop the compose stack before running `./mvnw verify`.
+
+## Outcome
+
+- **Phases 1–7 are done,** tagged `phase-1` … `phase-7`.
+- **Changes from this plan while building:**
+  - **Host ports:** nginx is on **8088** and Prometheus on **9091**, because another project on this machine uses 8080 and 9090. Both are configurable in `.env`.
+  - **App JVM:** moved from SerialGC to G1 after the first load test (DESIGN.md §20).
+  - **Grafana:** given 512 MB.
+- **Phase 8 (cloud VM)** has not started; it is waiting for your choice of free provider.
 
 ## 6. Phases (as your spec defines them)
 

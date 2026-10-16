@@ -174,8 +174,9 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
-    mem_limit: 384m
-    memswap_limit: 384m
+    # Grafana documents 512 MB as its minimum; at 384 MB it spent its time garbage collecting.
+    mem_limit: 512m
+    memswap_limit: 512m
     depends_on:
       - prometheus
 

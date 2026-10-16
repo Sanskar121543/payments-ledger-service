@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit and integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      # Testcontainers starts Postgres, Kafka, the app (x3) and nginx on the runner's Docker.
+      - name: Build and run all tests
+        run: ./mvnw -B verify
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+
+  compose:
+    name: Compose stack smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the full stack (3 instances behind nginx)
+        run: |
+          cp .env.example .env
+          docker compose --profile full up -d --build --wait
+      - name: Smoke test through nginx
+        run: scripts/smoke.sh
+      - name: Show logs
+        if: failure()
+        run: docker compose --profile full logs --tail 200
+      - name: Stop
+        if: always()
+        run: docker compose --profile full down -v
