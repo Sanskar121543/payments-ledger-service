@@ -83,6 +83,7 @@ flowchart LR
   - **Host ports:** nginx is on **8088** and Prometheus on **9091**, because another project on this machine uses 8080 and 9090. Both are configurable in `.env`.
   - **App JVM:** moved from SerialGC to G1 after the first load test (DESIGN.md §20).
   - **Grafana:** given 512 MB.
+- **Code review:** after phase 7, a multi-agent review checked the code; every confirmed finding was fixed (DESIGN.md §21).
 - **Phase 8 (cloud VM)** has not started; it is waiting for your choice of free provider.
 
 ## 6. Phases (as your spec defines them)

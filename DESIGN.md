@@ -227,6 +227,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   2. The app stops with the transfer, both entries, the key and the outbox row written but not committed.
   3. The test checks this in `pg_locks`, then SIGKILLs the app.
 - **Crash-test containers** get a 5-minute lock timeout, so the pause can only end with the kill.
+- **The load test uses a constant arrival rate:** k6 starts 100 requests per second whether or not earlier ones have finished. With a fixed number of looping users, a slow response delays that user's next request, so the test sends less exactly when the server struggles and the tail looks better than it is (coordinated omission). Requests k6 could not start in time are reported as dropped iterations.
 
 ## 19. Zero budget and choice of tools
 
@@ -255,7 +256,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   | k6 | 512 MB | during the load test only |
 
   Measured usage during the load test is in `results/k6/*-docker-stats.txt`.
-- **Load-test history** (all in `results/k6/`, 100 transfers/s for 60 s):
+- **Tuning runs** (100 transfers/s for 60 s; every run, including later ones, is in [`results/k6/history.md`](results/k6/history.md)):
 
   | Run | Change | p99 | Max | Dropped iterations |
   |---|---|---|---|---|
@@ -264,6 +265,8 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
   | `2026-10-16T14-30-48-313Z.json` | G1 + relay `linger.ms=0` | 467.8 ms | 880.2 ms | 17 |
 
   In the first run, Prometheus showed full GC pauses of 160–300 ms (code-cache and metaspace thresholds). While one instance is paused it keeps its row locks, so requests on the other two queue behind it: Hikari reported up to 16 pending connections.
+
+  **Each change was measured with one run on a shared laptop.** Later, two runs of one commit, minutes apart, differed by about 2.5× at p99, and re-runs of `0c0586f` itself were much slower than the row above (see the history). So these rows record what was observed, not a proven improvement. The G1 change rests on the mechanism above; `linger.ms=0` fixed a relay that could not keep up with the incoming rate (§14), not latency.
 
   Those GC and Hikari figures were read live from Prometheus during the session and were **not** saved to a file. Since then, `scripts/load-test.sh` saves them for every run as `results/k6/<timestamp>-prometheus.txt`. All three runs above used Grafana with its earlier 384 MB limit.
 - **Grafana:** given 512 MB, its documented minimum. At 384 MB it spent its time garbage collecting.

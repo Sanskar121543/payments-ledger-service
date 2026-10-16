@@ -10,3 +10,5 @@ Recorded evidence. The README quotes only numbers from these files.
 | [`k6/latest.md`](k6/latest.md), [`k6/latest.json`](k6/latest.json) | The most recent load test (copied into the README) |
 | `k6/<timestamp>.json` | Every recorded load-test run, including k6's full summary, the hardware and the git commit |
 | `k6/<timestamp>-docker-stats.txt` | Memory and CPU of every container, sampled during the run |
+| `k6/<timestamp>-prometheus.txt` | GC pauses, connection-pool waits, outbox backlog and lock timeouts during the run (from `ca7e15f` on) |
+| [`k6/history.md`](k6/history.md) | Every load-test run in one table, generated from the JSON files, with notes on how to read them |
