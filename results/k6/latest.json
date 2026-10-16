@@ -1,0 +1,31 @@
+{
+  "finishedAt": "2026-10-16T14:24:25.685Z",
+  "gitCommit": "9239a91",
+  "hardware": "ASUS ROG Strix G713PV laptop, AMD Ryzen 9 7845HX (12 cores / 24 threads), 15.2 GB RAM, Windows 11 Home, Docker Desktop with WSL2",
+  "dockerHost": "24 CPUs, 7905939456 bytes RAM visible to Docker, Docker Desktop, engine 29.8.0",
+  "topology": "nginx + app1/app2/app3 (768 MB each) + postgres + kafka, compose profile full",
+  "otherLoadOnMachine": "24 containers of an unrelated OpenTelemetry demo, including its own load generator, were running at the same time",
+  "scenario": {
+    "executor": "constant-arrival-rate",
+    "ratePerSecond": 100,
+    "duration": "60s",
+    "accounts": 20
+  },
+  "results": {
+    "transferRequests": 5935,
+    "transfersCompleted": 5935,
+    "transfersRefusedInsufficientFunds": 0,
+    "unexpectedStatusesIncludingWarmup": 0,
+    "droppedIterations": 66,
+    "latencyMs": {
+      "avg": 40.66650499915756,
+      "p50": 9.311623,
+      "p90": 60.13707240000003,
+      "p95": 182.45727190000014,
+      "p99": 775.3822372599997,
+      "max": 2198.611532
+    },
+    "ledgerInvariantOk": true,
+    "moneyConserved": true
+  }
+}

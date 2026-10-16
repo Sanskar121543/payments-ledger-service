@@ -1,0 +1,11 @@
+NAME                                  MEM USAGE / LIMIT     CPU %
+payments-ledger-k6-run-f123f07ba1a3   53.81MiB / 512MiB     11.74%
+payments-ledger-app3-1                470.9MiB / 768MiB     41.42%
+payments-ledger-app1-1                471.2MiB / 768MiB     46.69%
+payments-ledger-app2-1                477.2MiB / 768MiB     43.60%
+payments-ledger-nginx-1               6.18MiB / 64MiB       4.19%
+payments-ledger-kafbat-ui-1           279.9MiB / 512MiB     0.01%
+payments-ledger-grafana-1             314MiB / 384MiB       8.55%
+payments-ledger-postgres-1            187.5MiB / 768MiB     47.32%
+payments-ledger-prometheus-1          75.66MiB / 256MiB     2.75%
+payments-ledger-kafka-1               468MiB / 768MiB       19.95%
