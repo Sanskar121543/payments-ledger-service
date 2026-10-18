@@ -45,12 +45,18 @@ Always Free Arm capacity is often sold out, so the usual way is to let a script 
 
 ```bash
 cd infra/oci
-./wait-and-apply.sh    # checks every 5 minutes; when a domain has room: plan, apply, then deploy.sh
+./wait-and-apply.sh    # checks every 2 minutes; when a domain has room: plan, apply, then deploy.sh
 ```
 
-It writes the availability domain it used into `terraform.tfvars` (so later applies keep the VM where it is),
-refreshes `ssh_allowed_cidr` if your IP changed while it waited, and if the room is gone before the VM is placed,
-goes back to waiting. A failed attempt creates only the network, which is free.
+Each round it asks for 4 OCPU / 24 GB, then for 2 OCPU / 12 GB (`FALLBACK_SHAPE`, still room for the full
+profile), and every 10th round it tries a real launch even if the report says no, because the report can lag. If
+the room is gone before the VM is placed, it goes back to waiting; a failed attempt creates only the network, which
+is free. After a successful apply it writes the domain and shape into `terraform.tfvars`, so later applies keep the
+VM as created, and it refreshes `ssh_allowed_cidr` if your IP changed while it waited.
+
+If it took the 2 OCPU / 12 GB fallback, grow the VM later: set `ocpus = 4` and `memory_in_gbs = 24` in
+`terraform.tfvars` and `terraform apply`. The VM is resized in place (it reboots, and the stack restarts with it)
+when its host has room; if not, the apply fails and nothing changes.
 
 By hand, if `./capacity-check.sh` already shows a domain as `AVAILABLE`:
 

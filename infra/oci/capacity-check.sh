@@ -26,7 +26,7 @@ for i in "${!domains[@]}"; do
   status="$("$oci_cli" compute compute-capacity-report create --compartment-id "$tenancy" \
     --availability-domain "${domains[$i]}" --profile "$profile" \
     --shape-availabilities "[{\"instanceShape\":\"VM.Standard.A1.Flex\",\"instanceShapeConfig\":{\"ocpus\":$ocpus,\"memoryInGbs\":$memory}}]" \
-    --query 'data."shape-availabilities"[0]."availability-status"' --raw-output)"
+    --query 'data."shape-availabilities"[0]."availability-status"' --raw-output | tr -d '\r')" # oci.exe ends lines with CRLF
   echo "$(date -u +%H:%M:%SZ)  availability_domain_number = $((i + 1))  (${domains[$i]})  ${ocpus} OCPU / ${memory} GB: $status"
   [ "$status" = "AVAILABLE" ] && found=0
 done
