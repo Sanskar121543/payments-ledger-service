@@ -7,6 +7,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || { echo "Copy .env.example to .env first"; exit 1; }
 set -a; source .env; set +a
+# On the cloud VM (a copy sent by infra/oci/deploy.sh), describe the machine as it is now, which survives a resize.
+if [ -n "${DEPLOYED_COMMIT:-}" ] && [ -f infra/oci/vm-hardware-note.sh ]; then
+  export HARDWARE_NOTE="$(bash infra/oci/vm-hardware-note.sh)"
+fi
 [ -n "${HARDWARE_NOTE:-}" ] || { echo "Set HARDWARE_NOTE in .env (CPU, RAM, OS) so the results say what ran them"; exit 1; }
 
 export RATE="${1:-200}"

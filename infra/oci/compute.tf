@@ -62,7 +62,13 @@ resource "oci_core_instance" "ledger" {
   # The boot volume holds the ledger's data; it goes with the VM on destroy so nothing is left behind.
   preserve_boot_volume = false
 
+  # A newer image, changed user data or a new SSH key would each replace the VM (and its data). Rotate the key on
+  # the VM itself (~/.ssh/authorized_keys) instead.
   lifecycle {
-    ignore_changes = [source_details[0].source_id, metadata["user_data"]]
+    ignore_changes = [source_details[0].source_id, metadata["user_data"], metadata["ssh_authorized_keys"]]
   }
+}
+
+data "oci_core_image" "booted" {
+  image_id = oci_core_instance.ledger.source_details[0].source_id
 }

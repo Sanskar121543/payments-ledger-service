@@ -26,3 +26,5 @@ infra/**/terraform.tfvars
 infra/**/crash.log
 infra/**/*.log
 infra/**/*.tmp
+infra/**/.wait-and-apply.lock/
+infra/**/*.pid

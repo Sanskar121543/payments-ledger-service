@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs on the VM as ubuntu, started by deploy.sh with the commit it has just unpacked into a temporary directory.
-# Moves the code into place, keeps .env (made on the first run, so the secrets never leave the VM), builds the
-# image, (re)starts the stack through systemd and runs the smoke test.
+# Moves the code into place, keeps .env (made on the first run, so the secrets never leave the VM) and the VM's own
+# load-test results, builds the image, (re)starts the stack through systemd and runs the smoke test.
 # Usage (deploy.sh does this): vm-deploy.sh <unpacked-dir> <lite|full> <commit>
 set -euo pipefail
 
@@ -9,38 +9,40 @@ src="$1" profile="$2" commit="$3"
 app_dir=/opt/payments-ledger-service
 
 chmod 755 "$src" # mktemp made it 700, and rsync -a gives the app directory the same mode
-rsync -a --delete --exclude /.env "$src/" "$app_dir/"
+# results/ on the VM holds the VM's own load-test runs; the laptop's committed results never overwrite them.
+rsync -a --delete --exclude /.env --exclude /results/ "$src/" "$app_dir/"
 rm -rf "$src"
 cd "$app_dir"
+umask 077 # .env and its temporary copies are for ubuntu only
 
-set_env() { # set_env NAME VALUE: replace the line, or add it
-  grep -v "^$1=" .env > .env.tmp || true
-  printf '%s=%s\n' "$1" "$2" >> .env.tmp
-  mv .env.tmp .env
-  chmod 600 .env
+set_env() { # set_env FILE NAME VALUE: replace the line, or add it
+  grep -v "^$2=" "$1" > "$1.tmp" || true
+  printf '%s=%s\n' "$2" "$3" >> "$1.tmp"
+  mv "$1.tmp" "$1"
 }
 
+# The first run builds the whole file under a temporary name and only then moves it into place, so an interrupted
+# first deploy can never leave an .env with the repo's public demo key in it.
 if [ ! -f .env ]; then
-  cp .env.example .env
-  chmod 600 .env
-  set_env POSTGRES_PASSWORD "$(openssl rand -hex 24)"
-  set_env GRAFANA_ADMIN_PASSWORD "$(openssl rand -hex 24)"
+  cp .env.example .env.new
   keys="$(bash scripts/new-api-key.sh demo)"
-  set_env DEMO_API_KEY "$(sed -n 's/^DEMO_API_KEY=//p' <<< "$keys")"
-  set_env API_KEY_HASHES "$(sed -n 's/^API_KEY_HASHES=//p' <<< "$keys")"
+  set_env .env.new POSTGRES_PASSWORD "$(openssl rand -hex 24)"
+  set_env .env.new GRAFANA_ADMIN_PASSWORD "$(openssl rand -hex 24)"
+  set_env .env.new DEMO_API_KEY "$(sed -n 's/^DEMO_API_KEY=//p' <<< "$keys")"
+  set_env .env.new API_KEY_HASHES "$(sed -n 's/^API_KEY_HASHES=//p' <<< "$keys")"
+  mv .env.new .env
   echo "Made .env with new secrets"
+fi
+if [ "$(grep '^API_KEY_HASHES=' .env)" = "$(grep '^API_KEY_HASHES=' .env.example)" ]; then
+  echo "Refusing to start: .env accepts the public demo API key from .env.example."
+  echo "Make a new one with scripts/new-api-key.sh demo and put both lines into $app_dir/.env"
+  exit 1
 fi
 
 # Load-test results record the machine and the commit; there is no .git here, so the commit comes from deploy.sh.
-shape_region="$(curl -fsS -H 'Authorization: Bearer Oracle' http://169.254.169.254/opc/v2/instance/ \
-  | python3 -c 'import json, sys; m = json.load(sys.stdin); print(m["shape"] + ", " + m.get("canonicalRegionName", m["region"]))' \
-  || echo "unknown shape and region")"
-cpu_model="$(lscpu | sed -n 's/^Model name: *//p' | head -1)"
-memory_gb="$(awk '/^MemTotal:/ { printf "%.1f", $2 / 1048576 }' /proc/meminfo)"
-os_name="$(. /etc/os-release && echo "$PRETTY_NAME")"
-set_env HARDWARE_NOTE "\"Oracle Cloud ${shape_region}, Ampere ${cpu_model} ($(nproc) cores), ${memory_gb} GB RAM, ${os_name}, Docker $(docker version --format '{{.Server.Version}}')\""
-set_env DEPLOYED_COMMIT "$commit"
-set_env COMPOSE_PROFILES "$profile"
+set_env .env HARDWARE_NOTE "\"$(bash infra/oci/vm-hardware-note.sh)\""
+set_env .env DEPLOYED_COMMIT "$commit"
+set_env .env COMPOSE_PROFILES "$profile"
 
 docker compose build
 sudo install -m 0644 infra/oci/payments-ledger.service /etc/systemd/system/payments-ledger.service

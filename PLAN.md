@@ -84,7 +84,7 @@ flowchart LR
   - **App JVM:** moved from SerialGC to G1 after the first load test (DESIGN.md §20).
   - **Grafana:** given 512 MB.
 - **Code review:** after phase 7, a multi-agent review checked the code; every confirmed finding was fixed (DESIGN.md §21).
-- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the repo stays private. On 2026-10-18 Ashburn had no free Arm capacity, so `wait-and-apply.sh` waits for it.
+- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM (2 Arm OCPUs, 12 GB, the whole free A1 allowance) in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the repo stays private. On 2026-10-18 Ashburn had no free Arm capacity, so `wait-and-apply.sh` waits for it.
 
 ## 6. Phases (as your spec defines them)
 

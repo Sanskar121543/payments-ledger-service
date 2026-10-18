@@ -30,5 +30,5 @@ output "demo_api_key" {
 
 output "image" {
   description = "The Ubuntu image the VM was created from."
-  value       = data.oci_core_images.ubuntu_arm.images[0].display_name
+  value       = data.oci_core_image.booted.display_name
 }

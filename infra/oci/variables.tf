@@ -22,7 +22,7 @@ variable "compartment_ocid" {
 }
 
 variable "availability_domain_number" {
-  description = "1, 2 or 3. Pick one that scripts/capacity-check.sh reports as AVAILABLE."
+  description = "1, 2 or 3. Pick one that infra/oci/capacity-check.sh reports as AVAILABLE."
   type        = number
   default     = 1
 
@@ -32,27 +32,28 @@ variable "availability_domain_number" {
   }
 }
 
-# Always Free covers 4 OCPUs and 24 GB of Ampere A1 in total per tenancy. These limits keep this
-# configuration inside it; the tenancy's own limits are higher, and anything above the free amount is billed.
+# Always Free covers 1,500 OCPU hours and 9,000 GB hours of Ampere A1 a month per tenancy, which Oracle equates to
+# 2 OCPUs and 12 GB (it was 4 and 24 until 2026). These limits keep this configuration inside it; the tenancy's own
+# limits are higher, and anything above the free amount is billed or, on a free-only account, shut down.
 variable "ocpus" {
-  description = "Ampere A1 OCPUs (Always Free: at most 4 across the tenancy)."
+  description = "Ampere A1 OCPUs (Always Free: at most 2 across the tenancy)."
   type        = number
-  default     = 4
+  default     = 2
 
   validation {
-    condition     = var.ocpus >= 1 && var.ocpus <= 4 && floor(var.ocpus) == var.ocpus
-    error_message = "ocpus must be a whole number from 1 to 4 to stay within Always Free."
+    condition     = var.ocpus >= 1 && var.ocpus <= 2 && floor(var.ocpus) == var.ocpus
+    error_message = "ocpus must be 1 or 2 to stay within Always Free."
   }
 }
 
 variable "memory_in_gbs" {
-  description = "Ampere A1 memory in GB (Always Free: at most 24 across the tenancy)."
+  description = "Ampere A1 memory in GB (Always Free: at most 12 across the tenancy)."
   type        = number
-  default     = 24
+  default     = 12
 
   validation {
-    condition     = var.memory_in_gbs >= 6 && var.memory_in_gbs <= 24
-    error_message = "memory_in_gbs must be from 6 to 24: the lite profile needs about 3.1 GB, Always Free stops at 24."
+    condition     = var.memory_in_gbs >= 6 && var.memory_in_gbs <= 12
+    error_message = "memory_in_gbs must be from 6 to 12: the stack uses about 3 GB under load, Always Free stops at 12."
   }
 }
 

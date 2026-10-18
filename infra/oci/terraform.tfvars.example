@@ -7,7 +7,7 @@ ssh_allowed_cidr = "203.0.113.7/32" # your public IP: curl https://checkip.amazo
 
 # Optional:
 # availability_domain_number = 1      # wait-and-apply.sh sets this to the domain that had room
-# ocpus                      = 4      # Always Free: at most 4 OCPUs and 24 GB in total
-# memory_in_gbs              = 24
+# ocpus                      = 2      # Always Free: at most 2 OCPUs and 12 GB of A1 in total
+# memory_in_gbs              = 12
 # boot_volume_size_in_gbs    = 100    # Always Free: 200 GB of block storage in total
 # compose_profile            = "full" # or "lite"; read by deploy.sh
