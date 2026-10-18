@@ -53,9 +53,10 @@ cd infra/oci
 ```
 
 Each round it asks for 2 OCPU / 12 GB, then for 1 OCPU / 6 GB (`FALLBACK_SHAPE`), and tries every domain that
-reports room. Every 10th round it tries a real launch even if the report says no, because the report can lag. A
-failed attempt creates only the network, which is free. Capacity, rate limits and network errors mean "wait again";
-it stops only on errors that waiting cannot fix. It is built to be left running for days:
+reports room. Every 10th round (`BLIND_EVERY`, 0 = never) it tries a real launch even if the report says no,
+because the report can lag. A failed attempt creates only the network, which is free. Capacity, rate limits,
+network errors and OCI's occasional spurious `LimitExceeded` mean "wait again"; it stops only on errors that waiting
+cannot fix. It is built to be left running for days:
 
 - only one copy runs at a time (`.wait-and-apply.lock`), and editing the script while it runs does not affect it;
 - it stops as soon as the VM is in the Terraform state, and never applies a plan that deletes or replaces anything;
