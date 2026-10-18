@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Waits for Always Free Arm capacity, then creates the VM and deploys the stack (deploy.sh). Safe to leave running
 # for days: only one copy runs at a time, it stops as soon as the VM is in the Terraform state, it never applies a
-# plan that would delete or replace anything, and it will not launch while any other A1 instance exists in the
-# compartment (two could go past the free 2 OCPUs / 12 GB).
+# plan that would delete or replace anything, and it will not launch while any A1 OCPU is in use elsewhere in the
+# tenancy or too little free block storage is left (either could go past what is free).
 #
 # Each round asks OCI's capacity report for the configured shape (default 2 OCPU / 12 GB), then for FALLBACK_SHAPE
 # (default "1 6", which still runs the full profile; resize in place later, see README), and tries every domain
@@ -38,8 +38,20 @@ take_lock() {
   echo "$$" > "$lock/pid"
   [ ! -r "/proc/$$/winpid" ] || cat "/proc/$$/winpid" > "$lock/winpid"
   trap 'rm -rf "$lock"' EXIT
-  trap 'exit 143' TERM
-  trap 'exit 130' INT
+  trap 'on_signal 143' TERM
+  trap 'on_signal 130' INT
+}
+
+# A stop request is handled once the running command finishes. If that was the apply that made the VM, record it in
+# terraform.tfvars first, or a later apply with the default domain would plan to replace it.
+on_signal() {
+  trap - TERM INT
+  if vm_in_state; then
+    [ ! -f apply.log ] || cat apply.log
+    record_vm_in_tfvars
+    echo "Stopped after the VM was created. Deploy it with ./deploy.sh"
+  fi
+  exit "$1"
 }
 
 set_var() { # set_var NAME VALUE (VALUE as HCL): replace the line in terraform.tfvars, or add it
@@ -68,22 +80,35 @@ record_vm_in_tfvars() {
   echo "terraform.tfvars records the VM: domain ${domain:-?}, ${ocpus:-?} OCPU / ${memory:-?} GB"
 }
 
-# Any other A1 instance in the compartment (one terraform lost track of, or one made in the console) plus a new one
-# could go past the free allowance, so the loop stops instead. Returns 1 if OCI could not be asked.
-check_no_other_a1() {
-  local compartment found
-  compartment="$(tfvar compartment_ocid)"
-  compartment="${compartment:-$(tfvar tenancy_ocid)}"
-  if ! found="$("${OCI_CLI:-oci}" compute instance list --compartment-id "$compartment" --all \
-    --query "data[?shape=='VM.Standard.A1.Flex' && \"lifecycle-state\"!='TERMINATED'].\"display-name\"" \
-    --output json 2> /dev/null)"; then
-    echo "$(stamp)  Could not list instances; skipping this attempt"
+limit_value() { # limit_value SERVICE LIMIT FIELD: a region-wide usage counter for the whole tenancy
+  local value
+  value="$("${OCI_CLI:-oci}" limits resource-availability get --compartment-id "$(tfvar tenancy_ocid)" \
+    --service-name "$1" --limit-name "$2" --query "data.$3" --raw-output 2> /dev/null)" || return 1
+  value="$(tr -d '\r\n ' <<< "$value")"
+  [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
+  echo "${value%%.*}"
+}
+
+# The free A1 and block storage allowances are per tenancy. OCI's region-wide usage counters see every compartment,
+# so before a launch: any A1 OCPU already in use (an earlier VM terraform lost track of, one made in the console, in
+# any compartment), or less free storage left than the boot volume needs, and a new VM could go past what is free.
+# Returns 1 if OCI could not be asked.
+check_free_allowance() {
+  local cores storage want_gb
+  want_gb="$(tfvar boot_volume_size_in_gbs)"
+  want_gb="${want_gb:-100}"
+  if ! cores="$(limit_value compute standard-a1-core-regional-count used)" \
+    || ! storage="$(limit_value block-storage total-free-storage-gb-regional available)"; then
+    echo "$(stamp)  Could not read the tenancy's usage from OCI; skipping this attempt"
     return 1
   fi
-  found="$(tr -d '[]" \r\n' <<< "$found")"
-  if [ -n "$found" ]; then
-    echo "Stopping: the compartment already has A1 instances ($found) that this Terraform state does not know."
+  if [ "$cores" -ne 0 ]; then
+    echo "Stopping: $cores A1 OCPUs are already in use in this tenancy, outside this Terraform state."
     echo "A second VM could go past the free 2 OCPUs / 12 GB. Remove the other one, or import it, then start again."
+    exit 1
+  fi
+  if [ "$storage" -lt "$want_gb" ]; then
+    echo "Stopping: $storage GB of the free 200 GB block storage is left, and the boot volume needs $want_gb GB."
     exit 1
   fi
 }
@@ -92,7 +117,7 @@ check_no_other_a1() {
 # that waiting cannot fix, and on any plan that would delete or replace something.
 launch() {
   local domain="$1" want_ocpus="$2" want_memory="$3" ip status=0
-  check_no_other_a1 || return 1
+  check_free_allowance || return 1
   ip="$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]' || true)"
   [ -z "$ip" ] || set_var ssh_allowed_cidr "\"$ip/32\""
   echo "$(stamp)  Trying $want_ocpus OCPU / $want_memory GB in domain $domain"

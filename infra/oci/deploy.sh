@@ -9,8 +9,9 @@ cd "$(dirname "$0")"
 
 ref="${1:-HEAD}"
 commit="$(git rev-parse --short "${ref}^{commit}")"
-git cat-file -e "${commit}:infra/oci/vm-deploy.sh" 2> /dev/null \
-  || { echo "$ref is older than this deploy tooling (phase 8), so it cannot be deployed with deploy.sh"; exit 1; }
+# The ref's own vm-deploy.sh runs on the VM. Commits before 14424dd have none, or one that deletes the VM's results.
+git cat-file -e "${commit}:infra/oci/vm-hardware-note.sh" 2> /dev/null \
+  || { echo "$ref is older than this deploy tooling (14424dd), so it cannot be deployed with deploy.sh"; exit 1; }
 host="ubuntu@$(terraform output -raw public_ip)"
 key="$(terraform output -raw ssh_key)"
 key="${key/#\~/$HOME}"

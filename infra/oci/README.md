@@ -25,7 +25,7 @@ Oracle's Always Free tier covers 1,500 OCPU hours and 9,000 GB hours of Ampere A
 
 | Resource | Why | Always Free allowance it uses |
 |---|---|---|
-| VCN, internet gateway, route table, subnet | A network for the VM with a route out (for packages and image pulls) | Free, no allowance |
+| VCN, internet gateway, route table, subnet | A network for the VM with a route out (for packages and image pulls) | Free; a Free Tier tenancy may have 2 VCNs |
 | Security list | Allows SSH from `ssh_allowed_cidr` only. The VCN's default list is taken over with no rules | Free, no allowance |
 | `VM.Standard.A1.Flex`, 2 OCPU / 12 GB | Runs the full profile: about 5.2 GB of container limits, about 3 GB used under load | All of the A1 allowance |
 | 100 GB boot volume | OS, images, Postgres and Kafka data. Block volume speed grows with size, so 100 GB has twice the IOPS of 50 GB | Half of the 200 GB, which leaves room for Oracle's two free AMD micro VMs |
@@ -39,6 +39,7 @@ The variables refuse more than 2 OCPUs, 12 GB of memory or a 200 GB boot volume.
 - An Oracle Cloud account, with an API key in `~/.oci/config` (`oci iam region list --profile DEFAULT` works).
 - Terraform 1.6 or newer, and an SSH key pair **without a passphrase** (the deploy can run unattended). The defaults
   expect `~/.ssh/payments-ledger-oci` and `.pub`: `ssh-keygen -t ed25519 -N '' -f ~/.ssh/payments-ledger-oci`.
+- On a Free Tier tenancy, at most one other VCN (`oci network vcn list --compartment-id <tenancy>`); delete unused ones.
 - `cp terraform.tfvars.example terraform.tfvars`, then set `tenancy_ocid` (the `tenancy=` line of `~/.oci/config`) and
   `ssh_allowed_cidr` (your IP from `curl https://checkip.amazonaws.com`, plus `/32`). The file is gitignored.
 
@@ -58,11 +59,13 @@ it stops only on errors that waiting cannot fix. It is built to be left running 
 
 - only one copy runs at a time (`.wait-and-apply.lock`), and editing the script while it runs does not affect it;
 - it stops as soon as the VM is in the Terraform state, and never applies a plan that deletes or replaces anything;
-- it will not launch while any other A1 instance exists in the compartment, since two could go past the free amount;
+- it will not launch while any A1 OCPU is in use anywhere in the tenancy, or less free block storage is left than
+  the boot volume needs (OCI's region-wide usage counters), since either could go past what is free;
 - once the VM exists, it writes its domain and shape into `terraform.tfvars`, so later applies keep it as created;
 - before each attempt it refreshes `ssh_allowed_cidr`, in case your IP changed while it waited.
 
-Stop it from Git Bash with `kill "$(cat .wait-and-apply.lock/pid)"`. It finishes a running terraform command first.
+Stop it from Git Bash with `kill "$(cat .wait-and-apply.lock/pid)"`. It finishes a running terraform command first,
+and if that was the apply that created the VM, it still records the VM in `terraform.tfvars`.
 
 By hand, if `./capacity-check.sh` already shows a domain as `AVAILABLE`:
 
@@ -102,14 +105,23 @@ scp -i ~/.ssh/payments-ledger-oci "ubuntu@$(terraform output -raw public_ip):/op
 
 ## Update the VM
 
-Commit, then `./deploy.sh` (or `./deploy.sh <tag-or-sha>` for any commit that includes this directory). Uncommitted
-changes are not sent. The data, `.env` and the VM's results stay; the stack restarts on the new images. To switch
+Commit, then `./deploy.sh` (or `./deploy.sh <tag-or-sha>` for any commit from `14424dd` on; older ones are refused).
+Uncommitted changes are not sent. The data, `.env` and the VM's results stay; the stack restarts on the new images. To switch
 between `full` and `lite`, change `compose_profile` in `terraform.tfvars`, `terraform apply` (no resource changes)
 and `./deploy.sh`.
 
-If the waiter took the 1 OCPU / 6 GB fallback, grow the VM later to the free maximum: set `ocpus = 2` and
-`memory_in_gbs = 12` in `terraform.tfvars` and `terraform apply`. The VM is resized in place (it reboots, and the
-stack restarts with it) when its host has room; if not, the apply fails and nothing changes.
+If the waiter took the 1 OCPU / 6 GB fallback, grow the VM later to the free maximum, 2 OCPU / 12 GB. Oracle
+reboots a running VM to change its shape, so stop the stack cleanly first, and only try when its domain has room:
+
+```bash
+./capacity-check.sh 2 12                              # the VM's domain (availability_domain_number) must say AVAILABLE
+eval "$(terraform output -raw ssh)" sudo systemctl stop payments-ledger
+# set ocpus = 2 and memory_in_gbs = 12 in terraform.tfvars, then:
+terraform apply                                       # check the plan says "0 to destroy" before you type yes
+```
+
+The stack starts again with the VM. If the resize fails with `Out of host capacity`, the VM can be left stopped:
+start it as below.
 
 The SSH key is ignored after the VM is created (a new key would otherwise replace the VM and its data). To rotate
 it, add the new public key to `~/.ssh/authorized_keys` on the VM, then remove the old one.
@@ -117,13 +129,19 @@ it, add the new public key to `~/.ssh/authorized_keys` on the VM, then remove th
 ## When Oracle stops the VM
 
 Oracle may stop an Always Free VM it considers idle: over 7 days, CPU (95th percentile), network and memory all
-below 20%. An idle demo VM can qualify. It is stopped, not deleted, and the data stays. Start it in the console or
-with `oci compute instance action --action START --instance-id <id>`: a systemd unit starts the stack at boot, as it
-does after any reboot.
+below 20%. An idle demo VM can qualify. It is stopped, not deleted, and the data stays. Starting it needs free A1
+capacity in its domain, like a new launch, so keep trying:
+
+```bash
+until oci compute instance action --action START --instance-id "$(terraform output -raw instance_id)"; do sleep 300; done
+```
+
+A systemd unit starts the stack at boot, as it does after any reboot.
 
 ## Your IP changed
 
-SSH stops connecting. Update `ssh_allowed_cidr` in `terraform.tfvars` and `terraform apply`: only the security list changes.
+SSH stops connecting. Update `ssh_allowed_cidr` in `terraform.tfvars` and `terraform apply`: only the security list
+changes (the plan should say "0 to destroy").
 
 ## Remove everything
 

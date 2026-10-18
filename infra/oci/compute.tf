@@ -69,6 +69,12 @@ resource "oci_core_instance" "ledger" {
   }
 }
 
-data "oci_core_image" "booted" {
-  image_id = oci_core_instance.ledger.source_details[0].source_id
+# The image's name, kept from the apply that created the VM (looking it up later fails once Oracle retires it).
+resource "terraform_data" "booted_image" {
+  input      = data.oci_core_images.ubuntu_arm.images[0].display_name
+  depends_on = [oci_core_instance.ledger]
+
+  lifecycle {
+    ignore_changes = [input]
+  }
 }

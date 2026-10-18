@@ -30,5 +30,10 @@ output "demo_api_key" {
 
 output "image" {
   description = "The Ubuntu image the VM was created from."
-  value       = data.oci_core_image.booted.display_name
+  value       = terraform_data.booted_image.output
+}
+
+output "instance_id" {
+  description = "The VM's OCID, e.g. to start it again after Oracle stopped it as idle."
+  value       = oci_core_instance.ledger.id
 }
