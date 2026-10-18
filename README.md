@@ -14,7 +14,7 @@ A small payments backend that moves synthetic money between accounts safely.
 **Proof:** tests kill instances in the middle of the work, and the money still adds up to the cent.
 
 Java 21 · Spring Boot 4.1 · PostgreSQL 18 · Kafka 4.3 (KRaft) · nginx · Prometheus + Grafana · Docker Compose · Testcontainers · k6.
-Everything runs locally for free. All data is synthetic.
+Everything runs locally for free, or on one Always Free Oracle Cloud VM ([`infra/oci`](infra/oci/README.md)). All data is synthetic.
 
 ![Dashboard demo: same request 10 times, then 100 concurrent transfers, then one transfer's ledger entries](docs/demo.gif)
 
@@ -92,6 +92,10 @@ scripts/smoke.sh                                    # end-to-end check through n
 - No profile: only Postgres and Kafka, so you can run the app from your IDE with `./mvnw spring-boot:run`.
 
 Every port is bound to `127.0.0.1` only: the demo key in `.env.example` is public, so the API must not be reachable from your network. Ports and memory limits are in `compose.yaml` and `.env.example`. [RUNBOOK.md](RUNBOOK.md) covers day-to-day operation, killing an instance on purpose, and troubleshooting.
+
+### On a free cloud VM (optional)
+
+[`infra/oci`](infra/oci/README.md) is Terraform for one Oracle Cloud Always Free VM (4 Arm OCPUs, 24 GB) that runs this same stack. Only SSH from your IP reaches it, the dashboard comes through an SSH tunnel, and `deploy.sh` sends a commit over SSH, so the repo can stay private.
 
 ### API
 

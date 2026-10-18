@@ -231,7 +231,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
 
 ## 19. Zero budget and choice of tools
 
-- **Everything runs locally** in Docker Compose: no cloud accounts and no paid services.
+- **Everything runs locally** in Docker Compose: no cloud accounts and no paid services. The optional cloud VM (§23) uses only Oracle's Always Free tier.
 - **Chart.js 4.5.1 is vendored** (MIT licence), so the dashboard makes no third-party requests.
 - **Pinned versions** with notes:
   - `nginx:1.30.6-alpine`: the stable branch. `nginx:alpine` is mainline.
@@ -296,3 +296,15 @@ A multi-agent review of the finished code produced these findings. Each was chec
 ## 22. Who wrote the core logic (default D5)
 
 You asked me to finish the project overnight, so I implemented `TransferService`, `IdempotencyService`/`RequestFingerprint` and `OutboxRelay` myself. Branch `practice/core-logic` has those three reset to stubs, with all their tests still in place, so you can write them yourself as your original plan intended, then compare with `main`.
+
+## 23. Phase 8: one Always Free VM on Oracle Cloud
+
+- **Choice:** Terraform (`infra/oci`) for one `VM.Standard.A1.Flex` with 4 Arm OCPUs and 24 GB, running the same `compose.yaml` stack as the laptop.
+- **Alternatives:** other always-free VMs are far smaller (GCP's `e2-micro` has 1 GB, a fifth of the full profile's memory limits), and other providers' larger free VMs are time-limited trials. Managed Postgres and Kafka would be billed and would change what the tests prove.
+- **Why it stays free:** it uses the whole Always Free A1 allowance and nothing billed (no load balancer, NAT gateway, reserved IP or managed service). The variables refuse more than 4 OCPUs, 24 GB or 200 GB of disk.
+- **Disk:** 100 GB, not the 50 GB minimum. Balanced block volumes get 60 IOPS and 480 KB/s per GB, so Postgres and Kafka get twice the IOPS, and the other 100 GB of the 200 GB allowance stays free for the two Always Free AMD micro VMs.
+- **Only SSH is reachable, from one IP.** The demo API key in `.env.example` is public, so the API must never be. The dashboard, Grafana, Prometheus and kafbat-ui stay on the VM's loopback, as locally, and reach you through an SSH tunnel. The VCN's default security list (SSH from anywhere) is taken over with no rules.
+- **Code over SSH, not `git clone`:** `deploy.sh` pipes `git archive` of a commit to the VM. The repo is private (default D6), and this avoids putting a GitHub token or deploy key in user data or Terraform state. A redeploy is the same command, and an uncommitted change can't reach the VM by accident.
+- **Secrets are made on the VM** by the first deploy (`openssl rand`, `scripts/new-api-key.sh`), so they never pass through Terraform state, user data or the repo.
+- **Capacity:** free A1 capacity in Ashburn was sold out in every availability domain, at every size, on 2026-10-18. `capacity-check.sh` asks OCI's capacity report (read-only, free). `wait-and-apply.sh` waits for room, then applies and deploys.
+- **Restarts:** Oracle may stop an Always Free VM that stays idle for 7 days (CPU, network and memory all below 20%). A systemd unit starts the stack at boot, so starting the VM again is all it takes. The VM is not kept busy artificially to dodge the policy.

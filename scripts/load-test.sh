@@ -12,7 +12,12 @@ set -a; source .env; set +a
 export RATE="${1:-200}"
 export DURATION="${2:-60s}"
 # -dirty if anything outside results/ differs from HEAD, staged or not: the image is built from the working tree.
-export GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(git diff --quiet HEAD -- . ':!results' 2>/dev/null || echo '-dirty')"
+# A copy sent by infra/oci/deploy.sh has no .git; deploy.sh records the commit it sent as DEPLOYED_COMMIT.
+if [ -n "${DEPLOYED_COMMIT:-}" ]; then
+  export GIT_SHA="$DEPLOYED_COMMIT"
+else
+  export GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(git diff --quiet HEAD -- . ':!results' 2>/dev/null || echo '-dirty')"
+fi
 export DOCKER_INFO="$(docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes RAM visible to Docker, {{.OperatingSystem}}, engine {{.ServerVersion}}')"
 export TOPOLOGY="nginx + app1/app2/app3 (768 MB each) + postgres + kafka, compose profile full"
 other=$(docker ps --format '{{.Names}}' | grep -cv '^payments-ledger-' || true)
