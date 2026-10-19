@@ -1,7 +1,5 @@
 # Runbook
 
-On the Oracle Cloud VM, read [infra/oci/README.md](infra/oci/README.md#on-the-vm) first: `.env` there is managed by `deploy.sh`.
-
 ## Start and stop
 
 ```bash

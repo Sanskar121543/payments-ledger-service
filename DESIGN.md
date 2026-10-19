@@ -231,7 +231,7 @@ Entries marked **(default)** were open decisions in [PLAN.md](PLAN.md) §2. I pi
 
 ## 19. Zero budget and choice of tools
 
-- **Everything runs locally** in Docker Compose: no cloud accounts and no paid services. The optional cloud VM (§23) uses only Oracle's Always Free tier.
+- **Everything runs locally** in Docker Compose: no cloud accounts and no paid services.
 - **Chart.js 4.5.1 is vendored** (MIT licence), so the dashboard makes no third-party requests.
 - **Pinned versions** with notes:
   - `nginx:1.30.6-alpine`: the stable branch. `nginx:alpine` is mainline.
@@ -296,21 +296,3 @@ A multi-agent review of the finished code produced these findings. Each was chec
 ## 22. Who wrote the core logic (default D5)
 
 You asked me to finish the project overnight, so I implemented `TransferService`, `IdempotencyService`/`RequestFingerprint` and `OutboxRelay` myself. Branch `practice/core-logic` has those three reset to stubs, with all their tests still in place, so you can write them yourself as your original plan intended, then compare with `main`.
-
-## 23. Phase 8: one Always Free VM on Oracle Cloud
-
-- **Choice:** Terraform (`infra/oci`) for one `VM.Standard.A1.Flex` with 2 Arm OCPUs and 12 GB, running the same `compose.yaml` stack as the laptop.
-- **Alternatives:** other always-free VMs are far smaller (GCP's `e2-micro` has 1 GB, a fifth of the full profile's memory limits), and other providers' larger free VMs are time-limited trials. Managed Postgres and Kafka would be billed and would change what the tests prove.
-- **Why it stays free:** Oracle's Always Free tier covers 1,500 OCPU hours and 9,000 GB hours of A1 a month, which it equates to 2 OCPUs and 12 GB. The VM uses exactly that, and nothing billed (no load balancer, NAT gateway, reserved IP or managed service). The variables refuse more than 2 OCPUs, 12 GB or 200 GB of disk.
-  - **The allowance was halved in 2026** (from 4 OCPUs and 24 GB). The first version of this phase was written for 4/24; the review before anything was launched caught it against Oracle's current page, and no VM was ever created at 4/24.
-  - **2/12 is enough:** the full profile's limits add up to about 5.2 GB, and the last laptop load test used about 3 GB (`results/k6/2026-10-16T19-40-53Z-docker-stats.txt`). Two OCPUs will give lower throughput than the 24-thread laptop; results from the VM say so in their hardware line.
-- **Disk:** 100 GB, not the 50 GB minimum. Balanced block volumes (the boot volume default) get 60 IOPS and 480 KB/s per GB, so Postgres and Kafka get twice the IOPS, and the other 100 GB of the 200 GB allowance stays free for the two Always Free AMD micro VMs.
-- **Only SSH is reachable, from one IP.** The demo API key in `.env.example` is public, so the API must never be. The dashboard, Grafana, Prometheus and kafbat-ui stay on the VM's loopback, as locally, and reach you through an SSH tunnel. The VCN's default security list (SSH from anywhere) is taken over with no rules.
-- **Code over SSH, not `git clone`:** `deploy.sh` pipes `git archive` of a commit to the VM. It works while the repo is private (default D6; it is public since 2026-10-18), and it avoids putting a GitHub token or deploy key in user data or Terraform state. A redeploy is the same command, and an uncommitted change can't reach the VM by accident.
-- **Secrets are made on the VM** by the first deploy (`openssl rand`, `scripts/new-api-key.sh`), written to a temporary file and moved into place only when complete, so they never pass through Terraform state, user data or the repo, and an interrupted first deploy can't leave the public demo key behind. A deploy refuses to start if `.env` accepts the public key.
-- **The VM can't be replaced by accident:** a newer image, changed user data and a new SSH key are all ignored after creation (each would otherwise destroy the VM and its data). The booted image's name is kept from the creating apply, so a retired image can't break later plans.
-- **Optional and time-boxed, no wait-and-retry loops:** one capacity check (`capacity-check.sh`, OCI's read-only capacity report, free) for each free shape in each availability domain and, only if a domain has room, one plan and apply. If none has room, the cloud step is skipped. Restarting a VM that Oracle stopped is one attempt too.
-  - **Result:** free A1 capacity in Ashburn was sold out in every availability domain, at both free sizes, from 2026-10-18 into 2026-10-19 (about 10 hours: 1,440 capacity reports and 26 launch attempts, none with room). The VM is not deployed; the Terraform is validated in CI.
-  - **Why no loop:** until 2026-10-19 a `wait-and-apply.sh` retried unattended (last in `7215db1`). To be safe it needed a lock, fail-closed checks against going past the free allowance, a stop handler and a 24-scenario test harness; it made about 4,300 OCI calls a day; and there are community reports of accounts restricted after long retry loops. For an optional step, that cost and risk outweighed the chance of a VM.
-  - `oci.exe` ends its output with CRLF, so `capacity-check.sh` strips it; without that it could never see `AVAILABLE` on Windows.
-- **Restarts:** Oracle may stop an Always Free VM that stays idle for 7 days (CPU, network and memory all below 20%). Starting it again needs free capacity, like a launch, so the README makes one attempt; a systemd unit then starts the stack at boot. The VM is not kept busy artificially to dodge the policy.

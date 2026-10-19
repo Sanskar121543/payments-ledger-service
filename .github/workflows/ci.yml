@@ -54,19 +54,3 @@ jobs:
       - name: Stop
         if: always()
         run: docker compose --profile full down -v
-
-  terraform:
-    name: Terraform format and validate (no cloud access)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: infra/oci
-    steps:
-      - uses: actions/checkout@v7
-      - name: fmt, init without a backend, validate
-        run: |
-          tf() { docker run --rm -v "$PWD:/work" -w /work hashicorp/terraform:1.16.5 "$@"; }
-          tf fmt -check -recursive
-          tf init -backend=false -input=false
-          tf validate

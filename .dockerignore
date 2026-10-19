@@ -9,4 +9,3 @@ grafana/
 prometheus/
 nginx/
 *.md
-infra/

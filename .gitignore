@@ -16,13 +16,3 @@ target/
 .project
 .settings/
 .DS_Store
-
-# Terraform: state, plans, variables and provider downloads stay local (.terraform.lock.hcl is committed)
-infra/**/.terraform/
-infra/**/*.tfstate
-infra/**/*.tfstate.*
-infra/**/*.tfplan
-infra/**/terraform.tfvars
-infra/**/crash.log
-infra/**/*.log
-infra/**/*.tmp
