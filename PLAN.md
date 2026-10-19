@@ -27,7 +27,7 @@
 | D3 | JUnit version | **JUnit 6** (managed by Boot 4.1.1). It's the same Jupiter API as JUnit 5: `@Test` and the rest. | Pinning JUnit 5 would fight Boot's dependency management. |
 | D4 | Idempotency key retention | **24 h**, then a scheduled purge (configurable). | Keeps the table bounded. Stripe also keeps keys at least 24 h. |
 | D5 | Who wrote the core logic | **Me**, because you asked me to finish. Branch `practice/core-logic` has the three core pieces reset to stubs, with their failing tests, so you can write them yourself. | Your original agreement was that you write them. The branch keeps that path open. |
-| D6 | GitHub visibility | **Private** until you've reviewed it. Make it public with `gh repo edit --visibility public --accept-visibility-change-consequences`. | You wanted it public; private-first lets you review before anything is published. |
+| D6 | GitHub visibility | **Public** since 2026-10-18, after every commit, branch, tag, CI log and repo setting was checked for secrets and personal data. | You wanted it public; private-first let you review before anything was published. |
 | D7 | Kafka message key | **From-account id** (the account money leaves). | A transfer touches two accounts. The velocity rule counts *sends* per account, so all of one sender's events stay in one partition, in order. |
 | D8 | nginx retries of POST | **On:** `proxy_next_upstream error timeout non_idempotent` for `/v1/**`. **Off** for the `/v1/demo/**` buttons. | nginx never retries POSTs by default because they might not be safe to repeat. Ours are, because every `/v1` POST requires an `Idempotency-Key`. |
 
@@ -84,7 +84,7 @@ flowchart LR
   - **App JVM:** moved from SerialGC to G1 after the first load test (DESIGN.md §20).
   - **Grafana:** given 512 MB.
 - **Code review:** after phase 7, a multi-agent review checked the code; every confirmed finding was fixed (DESIGN.md §21).
-- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM (2 Arm OCPUs, 12 GB, the whole free A1 allowance) in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the repo stays private. On 2026-10-18 Ashburn had no free Arm capacity, so `wait-and-apply.sh` waits for it.
+- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM (2 Arm OCPUs, 12 GB, the whole free A1 allowance) in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the VM needs no GitHub access. On 2026-10-18 Ashburn had no free Arm capacity, so `wait-and-apply.sh` waits for it.
 
 ## 6. Phases (as your spec defines them)
 
