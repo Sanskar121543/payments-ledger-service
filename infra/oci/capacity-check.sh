@@ -3,7 +3,6 @@
 # Read-only: a capacity report creates nothing and costs nothing.
 # Exits 0 if any domain has room, 2 if OCI answered and none has, 1 if OCI could not be asked for every domain.
 # Usage: infra/oci/capacity-check.sh [ocpus] [memory-gb]      e.g. infra/oci/capacity-check.sh 1 6
-# Wait for capacity: until infra/oci/capacity-check.sh; do sleep 600; done   (or let wait-and-apply.sh do it)
 set -euo pipefail
 
 ocpus="${1:-2}"

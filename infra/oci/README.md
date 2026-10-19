@@ -43,39 +43,30 @@ The variables refuse more than 2 OCPUs, 12 GB of memory or a 200 GB boot volume.
 - `cp terraform.tfvars.example terraform.tfvars`, then set `tenancy_ocid` (the `tenancy=` line of `~/.oci/config`) and
   `ssh_allowed_cidr` (your IP from `curl https://checkip.amazonaws.com`, plus `/32`). The file is gitignored.
 
-## Deploy
+## Deploy: optional, one attempt
 
-Always Free Arm capacity is often sold out, so the usual way is to let a script wait for it:
+This step is optional and time-boxed: one capacity check and, only if a domain has room, one apply. Nothing waits
+or retries. Always Free Arm capacity is often sold out; if it is, skip the cloud VM, or make another attempt on
+another day.
 
 ```bash
 cd infra/oci
-./wait-and-apply.sh    # checks every 2 minutes; when a domain has room: plan, apply, then deploy.sh
+./capacity-check.sh        # 2 OCPU / 12 GB in each availability domain: AVAILABLE or OUT_OF_HOST_CAPACITY
+./capacity-check.sh 1 6    # only if none had room: the smaller shape, which still runs the full profile
 ```
 
-Each round it asks for 2 OCPU / 12 GB, then for 1 OCPU / 6 GB (`FALLBACK_SHAPE`), and tries every domain that
-reports room. Every 10th round (`BLIND_EVERY`, 0 = never) it tries a real launch even if the report says no,
-because the report can lag. A failed attempt creates only the network, which is free. Capacity, rate limits,
-network errors and OCI's occasional spurious `LimitExceeded` mean "wait again"; it stops only on errors that waiting
-cannot fix. It is built to be left running for days:
-
-- only one copy runs at a time (`.wait-and-apply.lock`), and editing the script while it runs does not affect it;
-- it stops as soon as the VM is in the Terraform state, and never applies a plan that deletes or replaces anything;
-- it will not launch while any A1 OCPU is in use anywhere in the tenancy, or less free block storage is left than
-  the boot volume needs (OCI's region-wide usage counters), since either could go past what is free;
-- once the VM exists, it writes its domain and shape into `terraform.tfvars`, so later applies keep it as created;
-- before each attempt it refreshes `ssh_allowed_cidr`, in case your IP changed while it waited.
-
-Stop it from Git Bash with `kill "$(cat .wait-and-apply.lock/pid)"`. It finishes a running terraform command first,
-and if that was the apply that created the VM, it still records the VM in `terraform.tfvars`.
-
-By hand, if `./capacity-check.sh` already shows a domain as `AVAILABLE`:
+If a domain says `AVAILABLE`, set `availability_domain_number` to it in `terraform.tfvars` (and `ocpus = 1`,
+`memory_in_gbs = 6` if only the smaller shape had room). Then:
 
 ```bash
 terraform init
-terraform plan -out=phase8.tfplan   # with availability_domain_number set to that domain
-terraform apply phase8.tfplan       # creates the 7 resources
+terraform plan -out=phase8.tfplan   # check it says "0 to destroy"
+terraform apply phase8.tfplan       # creates the network and the VM
 ./deploy.sh                         # waits for Docker on the VM, sends HEAD, builds, starts, runs the smoke test
 ```
+
+If the apply fails with `Out of host capacity`, the report was already out of date and the attempt is over. Only the
+network was created, which is free: leave it for a later attempt, or remove it with `terraform destroy`.
 
 The first `deploy.sh` makes the VM's secrets (Postgres and Grafana passwords, the demo API key) on the VM, so they
 never appear in Terraform state, user data or the repo. Then:
@@ -111,7 +102,7 @@ Uncommitted changes are not sent. The data, `.env` and the VM's results stay; th
 between `full` and `lite`, change `compose_profile` in `terraform.tfvars`, `terraform apply` (no resource changes)
 and `./deploy.sh`.
 
-If the waiter took the 1 OCPU / 6 GB fallback, grow the VM later to the free maximum, 2 OCPU / 12 GB. Oracle
+If only the 1 OCPU / 6 GB shape had room, grow the VM later to the free maximum, 2 OCPU / 12 GB. Oracle
 reboots a running VM to change its shape, so stop the stack cleanly first, and only try when its domain has room:
 
 ```bash
@@ -131,11 +122,13 @@ it, add the new public key to `~/.ssh/authorized_keys` on the VM, then remove th
 
 Oracle may stop an Always Free VM it considers idle: over 7 days, CPU (95th percentile), network and memory all
 below 20%. An idle demo VM can qualify. It is stopped, not deleted, and the data stays. Starting it needs free A1
-capacity in its domain, like a new launch, so keep trying:
+capacity in its domain, like a new launch, and is time-boxed the same way, one attempt:
 
 ```bash
-until oci compute instance action --action START --instance-id "$(terraform output -raw instance_id)"; do sleep 300; done
+oci compute instance action --action START --instance-id "$(terraform output -raw instance_id)"
 ```
+
+If it fails with `Out of host capacity`, leave the VM stopped and try another day.
 
 A systemd unit starts the stack at boot, as it does after any reboot.
 

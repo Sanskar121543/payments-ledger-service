@@ -95,7 +95,7 @@ Every port is bound to `127.0.0.1` only: the demo key in `.env.example` is publi
 
 ### On a free cloud VM (optional)
 
-[`infra/oci`](infra/oci/README.md) is Terraform for one Oracle Cloud Always Free VM (2 Arm OCPUs, 12 GB) that runs this same stack. Only SSH from your IP reaches it, the dashboard comes through an SSH tunnel, and `deploy.sh` sends a commit over SSH, so the repo can stay private.
+[`infra/oci`](infra/oci/README.md) is Terraform for one Oracle Cloud Always Free VM (2 Arm OCPUs, 12 GB) that runs this same stack. Only SSH from your IP reaches it, the dashboard comes through an SSH tunnel, and `deploy.sh` sends a commit over SSH, so the repo can stay private. The step is optional and time-boxed (one attempt, no retry loops); it is not deployed, because Oracle had no free Arm capacity in Ashburn on 2026-10-18/19.
 
 ### API
 

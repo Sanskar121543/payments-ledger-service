@@ -84,7 +84,7 @@ flowchart LR
   - **App JVM:** moved from SerialGC to G1 after the first load test (DESIGN.md §20).
   - **Grafana:** given 512 MB.
 - **Code review:** after phase 7, a multi-agent review checked the code; every confirmed finding was fixed (DESIGN.md §21).
-- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM (2 Arm OCPUs, 12 GB, the whole free A1 allowance) in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the VM needs no GitHub access. On 2026-10-18 Ashburn had no free Arm capacity, so `wait-and-apply.sh` waits for it.
+- **Phase 8 (cloud VM):** Terraform for one Always Free Oracle Cloud VM (2 Arm OCPUs, 12 GB, the whole free A1 allowance) in `infra/oci` (DESIGN.md §23). Code reaches it over SSH (`deploy.sh`), so the VM needs no GitHub access. The step is optional and time-boxed: one capacity check and, only if a domain has room, one apply, with no wait-and-retry loops. On 2026-10-18/19 Ashburn had no free Arm capacity, so the VM is not deployed.
 
 ## 6. Phases (as your spec defines them)
 
@@ -97,7 +97,7 @@ flowchart LR
 | 5 | Dashboard (SSE, Chart.js), demo buttons, Prometheus + Grafana with a provisioned dashboard | `StreamIT`, `DemoIT` |
 | 6 | Transactional outbox + relay, crash tests | `TransferCrashIT` (**kill mid-transfer**), `OutboxCrashIT` (replaces the phase-4 gap test) |
 | 7 | GitHub Actions CI, k6 load test + committed results, README / DESIGN / RUNBOOK, demo GIF | CI green, `results/k6/` |
-| 8 | *Optional* cloud VM in Terraform: one Oracle Cloud Always Free A1 VM, SSH-only, code sent over SSH | `terraform validate` in CI; `deploy.sh` ends with `scripts/smoke.sh` on the VM |
+| 8 | *Optional, time-boxed* cloud VM in Terraform: one Oracle Cloud Always Free A1 VM, SSH-only, code sent over SSH; one attempt, no retry loops | `terraform validate` in CI; `deploy.sh` ends with `scripts/smoke.sh` on the VM (only if the attempt gets capacity) |
 
 Each phase ends with a git tag (`phase-1` … `phase-7`), so you can check out the code as it was at any phase.
 

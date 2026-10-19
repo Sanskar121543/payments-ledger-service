@@ -6,7 +6,7 @@ region           = "us-ashburn-1"
 ssh_allowed_cidr = "203.0.113.7/32" # your public IP: curl https://checkip.amazonaws.com
 
 # Optional:
-# availability_domain_number = 1      # wait-and-apply.sh sets this to the domain that had room
+# availability_domain_number = 1      # a domain that capacity-check.sh reports as AVAILABLE
 # ocpus                      = 2      # Always Free: at most 2 OCPUs and 12 GB of A1 in total
 # memory_in_gbs              = 12
 # boot_volume_size_in_gbs    = 100    # Always Free: 200 GB of block storage in total
